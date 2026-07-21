@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	prefixTree "github.com/noahtigner/go-autocomplete/1_prefix_tree"
+	prefixTreeOrdered "github.com/noahtigner/go-autocomplete/2_prefix_tree_ordered"
 )
 
 type Product struct {
@@ -46,7 +46,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	trie := prefixTree.NewTrie()
+	trie := prefixTreeOrdered.NewTrie()
 
 	for _, product := range products {
 		trie.Insert(product.Name)
