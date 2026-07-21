@@ -5,22 +5,20 @@ import (
 	"fmt"
 	"os"
 
-	prefixTreeOrdered "github.com/noahtigner/go-autocomplete/2_prefix_tree_ordered"
+	// trie "github.com/noahtigner/go-autocomplete/1_trie"
+	// trieOrdered "github.com/noahtigner/go-autocomplete/2_trie_ordered"
+	trieWholeWordsAnyPosition "github.com/noahtigner/go-autocomplete/3_trie_whole_words_any_position"
+	models "github.com/noahtigner/go-autocomplete/models"
 )
 
-type Product struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-func readFileIntoMemory(filename string) ([]Product, error) {
+func readFileIntoMemory(filename string) ([]models.Product, error) {
 	bytes, err := os.ReadFile(filename)
 
 	if err != nil {
 		return nil, fmt.Errorf("Error: %v", err)
 	}
 
-	var products []Product
+	var products []models.Product
 
 	err = json.Unmarshal(bytes, &products)
 
@@ -46,12 +44,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	trie := prefixTreeOrdered.NewTrie()
-
-	for _, product := range products {
-		trie.Insert(product.Name)
-	}
-	matches := trie.Search(query)
+	matches := trieWholeWordsAnyPosition.Search(products, query)
 
 	for _, match := range matches {
 		fmt.Println(match)

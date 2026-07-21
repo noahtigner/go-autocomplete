@@ -1,9 +1,15 @@
-package prefixTree
+package trieOrdered
 
-import "strings"
+import (
+	"slices"
+	"strings"
+
+	"github.com/noahtigner/go-autocomplete/models"
+)
 
 // This approach only works when the search term is at the start of the product name
-// It also does not handle deduplication or consistent result ordering
+// It handles consistent results ordering
+// It also does not handle deduplication
 
 type TrieNode struct {
 	Pointers               map[string]*TrieNode
@@ -38,17 +44,23 @@ func (trie *Trie) Insert(phrase string) {
 	node.PhrasesTerminatingHere = append(node.PhrasesTerminatingHere, phrase)
 }
 
-func (trieNode *TrieNode) findPhrasesIncludingPrefix(acc []string) []string {
-	node := trieNode
-	if len(node.PhrasesTerminatingHere) > 0 {
-		acc = append(acc, node.PhrasesTerminatingHere...)
+func (node *TrieNode) findPhrasesIncludingPrefix(matches []string) []string {
+	matches = append(matches, node.PhrasesTerminatingHere...)
+
+	// deterministic/stable iteration order
+	keys := make([]string, 0, len(node.Pointers))
+	for key := range node.Pointers {
+		keys = append(keys, key)
 	}
-	for _, nodePtr := range node.Pointers {
-		if nodePtr != nil {
-			acc = nodePtr.findPhrasesIncludingPrefix(acc)
-		}
+	slices.Sort(keys)
+
+	// recursive calls for each child
+	for _, key := range keys {
+		child := node.Pointers[key]
+		matches = child.findPhrasesIncludingPrefix(matches)
 	}
-	return acc
+
+	return matches
 }
 
 func (trie *Trie) Search(phrase string) []string {
@@ -61,4 +73,12 @@ func (trie *Trie) Search(phrase string) []string {
 		node = node.Pointers[char]
 	}
 	return node.findPhrasesIncludingPrefix(nil)
+}
+
+func Search(products []models.Product, query string) []string {
+	trie := NewTrie()
+	for _, product := range products {
+		trie.Insert(product.Name)
+	}
+	return trie.Search(query)
 }
