@@ -1,14 +1,15 @@
-package trieWholeWordsAnyPosition
+package triePartialWordsAnyPositionConcurrent
 
 import (
 	"slices"
 	"strings"
+	"sync"
 
 	dataStructures "github.com/noahtigner/go-autocomplete/data_structures"
 	"github.com/noahtigner/go-autocomplete/models"
 )
 
-// This approach matches any product where the query matches a whole word somewhere within the product name
+// This approach matches any product where the query matches part of a word somewhere within the product name
 // It also supports multiple words in the query string
 
 type TrieNode struct {
@@ -80,21 +81,32 @@ func Search(products []models.Product, query string) []string {
 
 	// insert each word of each product into the Trie
 	for _, product := range products {
-		for word := range strings.SplitSeq(product.Name, " ") {
+		for word := range strings.FieldsSeq(product.Name) {
 			trie.Insert(product.Name, word)
 		}
 	}
 
 	// search for each word in the query and intersect them
-	queryWords := strings.Split(query, " ")
-	single_word_results := make([]dataStructures.Set[string], 0, len(queryWords))
-	for _, word := range queryWords {
-		temp_set := dataStructures.NewSet[string]()
-		for _, result := range trie.Search(word) {
-			temp_set.Add(result)
-		}
-		single_word_results = append(single_word_results, temp_set)
+	queryWords := strings.Fields(query)
+	single_word_results := make([]dataStructures.Set[string], len(queryWords))
+	var wg sync.WaitGroup
+
+	for i, word := range queryWords {
+		wg.Add(1)
+
+		go func(i int, word string) {
+			defer wg.Done()
+
+			set := dataStructures.NewSet[string]()
+			for _, result := range trie.Search(word) {
+				set.Add(result)
+			}
+			single_word_results[i] = set
+		}(i, word)
+
+		wg.Wait()
 	}
+
 	intersection := single_word_results[0].Intersection(single_word_results[1:])
 	intersected_results := make([]string, 0, len(intersection))
 	for key := range intersection {

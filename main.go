@@ -8,8 +8,8 @@ import (
 
 	// trie "github.com/noahtigner/go-autocomplete/1_trie"
 	// trieOrdered "github.com/noahtigner/go-autocomplete/2_trie_ordered"
-	// trieWholeWordsAnyPosition "github.com/noahtigner/go-autocomplete/3_trie_whole_words_any_position"
-	trieWholeWordsAnyPositionConcurrent "github.com/noahtigner/go-autocomplete/4_trie_whole_words_any_position_concurrent"
+	// triePartialWordsAnyPosition "github.com/noahtigner/go-autocomplete/3_trie_partial_words_any_position"
+	triePartialWordsAnyPositionConcurrent "github.com/noahtigner/go-autocomplete/4_trie_partial_words_any_position_concurrent"
 	models "github.com/noahtigner/go-autocomplete/models"
 )
 
@@ -52,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	matches := trieWholeWordsAnyPositionConcurrent.Search(products, query)
+	matches := triePartialWordsAnyPositionConcurrent.Search(products, query)
 
 	for _, match := range matches[:min(len(matches), 10)] {
 		fmt.Println(match)
