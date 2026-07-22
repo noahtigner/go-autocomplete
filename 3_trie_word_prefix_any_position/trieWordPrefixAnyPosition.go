@@ -1,4 +1,4 @@
-package triePartialWordsAnyPosition
+package trieWordPrefixAnyPosition
 
 import (
 	"slices"
@@ -8,8 +8,8 @@ import (
 	"github.com/noahtigner/go-autocomplete/models"
 )
 
-// This approach matches any product where the query matches part of a word somewhere within the product name
-// It also supports multiple words in the query string
+// This approach matches query prefixes at the beginning of words anywhere within the product name.
+// Multiple query words may match words in any order.
 
 type TrieNode struct {
 	Pointers               map[string]*TrieNode
