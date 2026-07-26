@@ -10,7 +10,8 @@ import (
 	// trieOrdered "github.com/noahtigner/go-autocomplete/2_trie_ordered"
 	// trieWordPrefixAnyPosition "github.com/noahtigner/go-autocomplete/3_trie_word_prefix_any_position"
 	// trieWordPrefixAnyPositionConcurrent "github.com/noahtigner/go-autocomplete/4_trie_word_prefix_any_position_concurrent"
-	trieTrigrams "github.com/noahtigner/go-autocomplete/5_trie_trigrams"
+	// trieTrigrams "github.com/noahtigner/go-autocomplete/5_trie_trigrams"
+	trieTrigramsConcurrent "github.com/noahtigner/go-autocomplete/6_trie_trigrams_concurrent"
 	models "github.com/noahtigner/go-autocomplete/models"
 )
 
@@ -53,7 +54,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	matches := trieTrigrams.Search(products, query)
+	matches := trieTrigramsConcurrent.Search(products, query)
 
 	for _, match := range matches[:min(len(matches), 10)] {
 		fmt.Println(match)
