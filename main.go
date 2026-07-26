@@ -11,7 +11,11 @@ import (
 	// trieWordPrefixAnyPosition "github.com/noahtigner/go-autocomplete/3_trie_word_prefix_any_position"
 	// trieWordPrefixAnyPositionConcurrent "github.com/noahtigner/go-autocomplete/4_trie_word_prefix_any_position_concurrent"
 	// trieTrigrams "github.com/noahtigner/go-autocomplete/5_trie_trigrams"
-	trieTrigramsConcurrent "github.com/noahtigner/go-autocomplete/6_trie_trigrams_concurrent"
+	// trieTrigramsConcurrent "github.com/noahtigner/go-autocomplete/6_trie_trigrams_concurrent"
+	// invertedIndexPrefixAnyPosition "github.com/noahtigner/go-autocomplete/7_inverted_index_prefix_any_position"
+	// invertedIndexTrigrams "github.com/noahtigner/go-autocomplete/8_inverted_index_trigrams"
+	// invertedIndexNGrams "github.com/noahtigner/go-autocomplete/9_inverted_index_ngrams"
+	invertedIndexNGramsConcurrent "github.com/noahtigner/go-autocomplete/10_inverted_index_ngrams_concurrent"
 	models "github.com/noahtigner/go-autocomplete/models"
 )
 
@@ -34,7 +38,7 @@ func readFileIntoMemory(filename string) ([]models.Product, error) {
 }
 
 func main() {
-	start := time.Now()
+	ioStart := time.Now()
 
 	args := os.Args[1:]
 	if len(args) < 1 {
@@ -54,12 +58,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	matches := trieTrigramsConcurrent.Search(products, query)
+	ioDuration := time.Since(ioStart)
+	searchStart := time.Now()
+	fmt.Printf("Loaded %d records in %.2fs\n", len(products), ioDuration.Seconds())
+
+	matches := invertedIndexNGramsConcurrent.Search(products, query)
+	searchDuration := time.Since(searchStart)
 
 	for _, match := range matches[:min(len(matches), 10)] {
 		fmt.Println(match)
 	}
 
-	duration := time.Since(start)
-	fmt.Printf("Found %d results in %s\n", len(matches), duration)
+	fmt.Printf("Found %d results in %.2fs\n", len(matches), searchDuration.Seconds())
 }
