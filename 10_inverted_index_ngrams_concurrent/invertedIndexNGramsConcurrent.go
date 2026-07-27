@@ -9,7 +9,7 @@ import (
 	models "github.com/noahtigner/go-autocomplete/models"
 )
 
-// This approach works supports substring matching across each word in the query
+// This approach supports substring matching across each word in the query
 // It builds the different n-gram indexes concurrently and uses an optimized set intersection algorithm
 
 type Index struct {
@@ -88,11 +88,12 @@ func retrieveSearchCandidates(reverseIndex Index, queryWords []string) dataStruc
 
 	for i, word := range queryWords {
 		var gramSets []dataStructures.Set[string]
-		grams := dataStructures.Unique(gramsForQueryWord(word))
+		grams := gramsForQueryWord(word)
+		index := reverseIndex.nIndex(len(word))
 
 		for _, gram := range grams {
 			gramSet := dataStructures.NewSet[string]()
-			for _, match := range reverseIndex.nIndex(len(word))[gram] {
+			for _, match := range index[gram] {
 				gramSet.Add(match)
 			}
 			gramSets = append(gramSets, gramSet)
@@ -119,6 +120,7 @@ func Search(reverseIndex Index, query string) []string {
 		for _, word := range queryWords {
 			if !strings.Contains(candidate, word) {
 				candidates.Remove(candidate)
+				break
 			}
 		}
 	}

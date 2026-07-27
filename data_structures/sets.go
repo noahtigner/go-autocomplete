@@ -46,7 +46,6 @@ func (s Set[T]) Intersection(otherSets []Set[T]) Set[T] {
 		for key := range intersection {
 			if !otherSet.Contains(key) {
 				intersection.Remove(key)
-				break
 			}
 		}
 	}
