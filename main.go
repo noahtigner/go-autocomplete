@@ -59,14 +59,19 @@ func main() {
 	}
 
 	ioDuration := time.Since(ioStart)
-	searchStart := time.Now()
 	fmt.Printf("Loaded %d records in %.2fs\n", len(products), ioDuration.Seconds())
 
-	matches := invertedIndexNGramsConcurrent.Search(products, query)
+	indexingStart := time.Now()
+	reverseIndex := invertedIndexNGramsConcurrent.BuildReverseIndex(products)
+	indexingDuration := time.Since(indexingStart)
+	fmt.Printf("Indexed %d records in %.2fs\n", len(products), indexingDuration.Seconds())
+
+	searchStart := time.Now()
+	matches := invertedIndexNGramsConcurrent.Search(reverseIndex, query)
 	searchDuration := time.Since(searchStart)
 
 	for _, match := range matches[:min(len(matches), 10)] {
-		fmt.Println(match)
+		fmt.Printf("\t%s\n", match)
 	}
 
 	fmt.Printf("Found %d results in %.2fs\n", len(matches), searchDuration.Seconds())

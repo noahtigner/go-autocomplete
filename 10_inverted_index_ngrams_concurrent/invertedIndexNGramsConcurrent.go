@@ -45,7 +45,7 @@ func gramsForQueryWord(word string) []string {
 	return getNGrams(word, len(word))
 }
 
-func buildReverseIndex(products []models.Product) Index {
+func BuildReverseIndex(products []models.Product) Index {
 	reverseIndex := Index{
 		unigrams: make(map[string][]string),
 		bigrams:  make(map[string][]string),
@@ -77,9 +77,7 @@ func buildReverseIndex(products []models.Product) Index {
 	return reverseIndex
 }
 
-func Search(products []models.Product, query string) []string {
-	reverseIndex := buildReverseIndex(products)
-
+func Search(reverseIndex Index, query string) []string {
 	normalizedQuery := strings.ToLower(query)
 	queryWords := strings.Fields(normalizedQuery)
 
