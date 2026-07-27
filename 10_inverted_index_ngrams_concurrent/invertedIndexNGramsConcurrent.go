@@ -1,6 +1,7 @@
 package invertedIndexNGramsConcurrent
 
 import (
+	"slices"
 	"strings"
 	"sync"
 
@@ -102,7 +103,7 @@ func Search(reverseIndex Index, query string) []string {
 		wordResults[i] = dataStructures.Intersection(gramSets)
 	}
 
-	intersection := dataStructures.Intersection(wordResults)
-
-	return intersection.ToSlice()
+	intersection := dataStructures.Intersection(wordResults).ToSlice()
+	slices.Sort(intersection)
+	return intersection
 }
