@@ -13,12 +13,14 @@ import (
 // It builds the different n-gram indexes concurrently and uses an optimized set intersection algorithm
 
 type Index struct {
-	unigrams map[string][]string
-	bigrams  map[string][]string
-	trigrams map[string][]string
+	unigrams        map[string][]int
+	bigrams         map[string][]int
+	trigrams        map[string][]int
+	productNames    map[int]string
+	normalizedNames map[int]string
 }
 
-func (i Index) nIndex(n int) map[string][]string {
+func (i Index) nIndex(n int) map[string][]int {
 	n = min(3, max(n, 1))
 	switch n {
 	case 1:
@@ -48,9 +50,16 @@ func gramsForQueryWord(word string) []string {
 
 func BuildReverseIndex(products []models.Product) Index {
 	reverseIndex := Index{
-		unigrams: make(map[string][]string),
-		bigrams:  make(map[string][]string),
-		trigrams: make(map[string][]string),
+		unigrams:        make(map[string][]int),
+		bigrams:         make(map[string][]int),
+		trigrams:        make(map[string][]int),
+		productNames:    make(map[int]string),
+		normalizedNames: make(map[int]string),
+	}
+
+	for _, product := range products {
+		reverseIndex.productNames[product.ID] = product.Name
+		reverseIndex.normalizedNames[product.ID] = strings.ToLower(product.Name)
 	}
 
 	var wg sync.WaitGroup
@@ -61,7 +70,7 @@ func BuildReverseIndex(products []models.Product) Index {
 			lastSeen := make(map[string]int)
 
 			for _, product := range products {
-				normalizedName := strings.ToLower(product.Name)
+				normalizedName := reverseIndex.normalizedNames[product.ID]
 
 				for word := range strings.FieldsSeq(normalizedName) {
 					for _, gram := range getNGrams(word, n) {
@@ -71,7 +80,7 @@ func BuildReverseIndex(products []models.Product) Index {
 						}
 
 						lastSeen[gram] = product.ID
-						index[gram] = append(index[gram], normalizedName)
+						index[gram] = append(index[gram], product.ID)
 					}
 				}
 			}
@@ -83,16 +92,16 @@ func BuildReverseIndex(products []models.Product) Index {
 	return reverseIndex
 }
 
-func retrieveSearchCandidates(reverseIndex Index, queryWords []string) dataStructures.Set[string] {
-	wordResults := make([]dataStructures.Set[string], len(queryWords))
+func retrieveSearchCandidates(reverseIndex Index, queryWords []string) dataStructures.Set[int] {
+	wordResults := make([]dataStructures.Set[int], len(queryWords))
 
 	for i, word := range queryWords {
-		var gramSets []dataStructures.Set[string]
-		grams := gramsForQueryWord(word)
+		var gramSets []dataStructures.Set[int]
+		grams := dataStructures.Unique(gramsForQueryWord(word))
 		index := reverseIndex.nIndex(len(word))
 
 		for _, gram := range grams {
-			gramSet := dataStructures.NewSet[string]()
+			gramSet := dataStructures.NewSet[int]()
 			for _, match := range index[gram] {
 				gramSet.Add(match)
 			}
@@ -106,6 +115,25 @@ func retrieveSearchCandidates(reverseIndex Index, queryWords []string) dataStruc
 	return intersection
 }
 
+func filterSearchCandidates(reverseIndex Index, queryWords []string, candidates dataStructures.Set[int]) []string {
+	results := make([]string, 0, len(candidates))
+
+	for candidate := range candidates {
+		matchesAll := true
+		for _, word := range queryWords {
+			if !strings.Contains(reverseIndex.normalizedNames[candidate], word) {
+				matchesAll = false
+				break
+			}
+		}
+		if matchesAll {
+			results = append(results, reverseIndex.productNames[candidate])
+		}
+	}
+
+	return results
+}
+
 func Search(reverseIndex Index, query string) []string {
 	normalizedQuery := strings.ToLower(query)
 	queryWords := strings.Fields(normalizedQuery)
@@ -115,17 +143,8 @@ func Search(reverseIndex Index, query string) []string {
 	}
 
 	candidates := retrieveSearchCandidates(reverseIndex, queryWords)
-
-	for candidate := range candidates {
-		for _, word := range queryWords {
-			if !strings.Contains(candidate, word) {
-				candidates.Remove(candidate)
-				break
-			}
-		}
-	}
-
-	results := candidates.ToSlice()
+	results := filterSearchCandidates(reverseIndex, queryWords, candidates)
 	slices.Sort(results)
+
 	return results
 }
