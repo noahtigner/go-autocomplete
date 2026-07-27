@@ -78,14 +78,7 @@ func BuildReverseIndex(products []models.Product) Index {
 	return reverseIndex
 }
 
-func Search(reverseIndex Index, query string) []string {
-	normalizedQuery := strings.ToLower(query)
-	queryWords := strings.Fields(normalizedQuery)
-
-	if len(queryWords) == 0 {
-		return []string{}
-	}
-
+func retrieveSearchCandidates(reverseIndex Index, queryWords []string) dataStructures.Set[string] {
 	wordResults := make([]dataStructures.Set[string], len(queryWords))
 
 	for i, word := range queryWords {
@@ -103,7 +96,29 @@ func Search(reverseIndex Index, query string) []string {
 		wordResults[i] = dataStructures.Intersection(gramSets)
 	}
 
-	intersection := dataStructures.Intersection(wordResults).ToSlice()
-	slices.Sort(intersection)
+	intersection := dataStructures.Intersection(wordResults)
 	return intersection
+}
+
+func Search(reverseIndex Index, query string) []string {
+	normalizedQuery := strings.ToLower(query)
+	queryWords := strings.Fields(normalizedQuery)
+
+	if len(queryWords) == 0 {
+		return []string{}
+	}
+
+	candidates := retrieveSearchCandidates(reverseIndex, queryWords)
+
+	for candidate := range candidates {
+		for _, word := range queryWords {
+			if !strings.Contains(candidate, word) {
+				candidates.Remove(candidate)
+			}
+		}
+	}
+
+	results := candidates.ToSlice()
+	slices.Sort(results)
+	return results
 }
