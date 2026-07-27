@@ -53,20 +53,25 @@ func BuildReverseIndex(products []models.Product) Index {
 		trigrams: make(map[string][]string),
 	}
 
-	normalizedNames := make([]string, len(products))
-	for i, product := range products {
-		normalizedNames[i] = strings.ToLower(product.Name)
-	}
-
 	var wg sync.WaitGroup
 
 	for n := 1; n <= 3; n += 1 {
 		wg.Go(func() {
-			for _, productName := range normalizedNames {
-				for word := range strings.FieldsSeq(productName) {
-					grams := dataStructures.Unique(getNGrams(word, n))
-					for _, gram := range grams {
-						reverseIndex.nIndex(n)[gram] = append(reverseIndex.nIndex(n)[gram], productName)
+			index := reverseIndex.nIndex(n)
+			lastSeen := make(map[string]int)
+
+			for _, product := range products {
+				normalizedName := strings.ToLower(product.Name)
+
+				for word := range strings.FieldsSeq(normalizedName) {
+					for _, gram := range getNGrams(word, n) {
+						// prevent duplicate products caused by repeated grams
+						if previous, exists := lastSeen[gram]; exists && previous == product.ID {
+							continue
+						}
+
+						lastSeen[gram] = product.ID
+						index[gram] = append(index[gram], normalizedName)
 					}
 				}
 			}
