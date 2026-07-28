@@ -6,27 +6,18 @@ import (
 	"os"
 	"time"
 
-	// trie "github.com/noahtigner/go-autocomplete/1_trie"
-	// trieOrdered "github.com/noahtigner/go-autocomplete/2_trie_ordered"
-	// trieWordPrefixAnyPosition "github.com/noahtigner/go-autocomplete/3_trie_word_prefix_any_position"
-	// trieWordPrefixAnyPositionConcurrent "github.com/noahtigner/go-autocomplete/4_trie_word_prefix_any_position_concurrent"
-	// trieTrigrams "github.com/noahtigner/go-autocomplete/5_trie_trigrams"
-	// trieTrigramsConcurrent "github.com/noahtigner/go-autocomplete/6_trie_trigrams_concurrent"
-	// invertedIndexPrefixAnyPosition "github.com/noahtigner/go-autocomplete/7_inverted_index_prefix_any_position"
-	// invertedIndexTrigrams "github.com/noahtigner/go-autocomplete/8_inverted_index_trigrams"
-	// invertedIndexNGrams "github.com/noahtigner/go-autocomplete/9_inverted_index_ngrams"
-	invertedIndexNGramsConcurrent "github.com/noahtigner/go-autocomplete/10_inverted_index_ngrams_concurrent"
-	models "github.com/noahtigner/go-autocomplete/models"
+	"github.com/noahtigner/go-autocomplete/autocomplete"
+	"github.com/noahtigner/go-autocomplete/products"
 )
 
-func readFileIntoMemory(filename string) ([]models.Product, error) {
+func readFileIntoMemory(filename string) ([]products.Product, error) {
 	bytes, err := os.ReadFile(filename)
 
 	if err != nil {
 		return nil, fmt.Errorf("Error: %v", err)
 	}
 
-	var products []models.Product
+	var products []products.Product
 
 	err = json.Unmarshal(bytes, &products)
 
@@ -62,12 +53,12 @@ func main() {
 	fmt.Printf("Loaded %d records in %.2fs\n", len(products), ioDuration.Seconds())
 
 	indexingStart := time.Now()
-	reverseIndex := invertedIndexNGramsConcurrent.BuildReverseIndex(products)
+	index := autocomplete.BuildIndex(products)
 	indexingDuration := time.Since(indexingStart)
 	fmt.Printf("Indexed %d records in %.2fs\n", len(products), indexingDuration.Seconds())
 
 	searchStart := time.Now()
-	matches := invertedIndexNGramsConcurrent.Search(reverseIndex, query)
+	matches := index.Search(query)
 	searchDuration := time.Since(searchStart)
 
 	for _, match := range matches[:min(len(matches), 10)] {
