@@ -1,42 +1,125 @@
 # Go Autocomplete
 
-This project explores several autocomplete implementations over a product catalog. The final implementation uses a concurrently built inverted n-gram index.
+This project explores autocomplete and substring-search implementations in Go. The current dataset is derived from IMDb title metadata and ratings rather than a synthetic product catalog.
+
+The active implementation builds a concurrent inverted n-gram index over approximately 12 million movie, television, and video titles. It supports multi-word, case-insensitive substring matching and returns full movie records ordered by a Bayesian rating score.
 
 ## Progression
 
 1. Character trie for prefix matching.
 2. Ordered trie traversal for deterministic results.
-3. Word-prefix matching at any position in a product name.
+3. Word-prefix matching at any position in a title.
 4. Concurrent word-prefix searches.
 5. Trigram trie for substring candidates.
 6. Concurrent trigram searches.
 7. Inverted index for word prefixes.
 8. Inverted trigram index.
-9. Inverted n-gram index.
-10. Concurrent inverted n-gram index with product IDs, candidate verification, optimized set intersections, and sorted results.
-11. The above, plus an etl script for 12M IMDB records, partial streaming implementation
-12. The above, with full streaming for ETL & Indexing
-13. The above, plus custom sorting based on the Bayesian average for each movie rating
+9. Inverted unigram, bigram, and trigram indexes.
+10. Concurrent inverted n-gram indexing with candidate verification and set intersection.
+11. IMDb ETL pipeline joining title basics with title ratings.
+12. JSONL output and streaming record ingestion.
+13. Three long-lived indexing workers with separate map ownership for unigrams, bigrams, and trigrams.
+14. Full movie-record retention by ID and Bayesian rating-based result ordering.
 
-The earlier implementations are preserved in Git history rather than in the working tree.
+Earlier implementations are preserved in Git history rather than in the working tree.
 
-## Current Approach
+## Current Architecture
 
-The active implementation:
+### Data pipeline
 
-- Builds unigram, bigram, and trigram indexes concurrently.
-- Matches multiple query words in any order.
-- Uses n-grams to retrieve candidate products quickly.
-- Verifies candidates with case-insensitive substring matching.
-- Stores product IDs in postings instead of repeating product names.
-- Returns sorted product names.
+The ETL program downloads two official IMDb datasets:
 
-## Run
+- `title.basics.tsv.gz`
+- `title.ratings.tsv.gz`
 
-Provide a search query as the first argument:
+It joins records by `tconst`, converts IMDb's TSV records into `models.Movie`, and writes one JSON object per line to `data/movies.jsonl`.
+
+The importer streams both compressed input files and streams JSONL output. The generated files are ignored by Git because they are large and IMDb data is refreshed regularly.
+
+### Index construction
+
+The application reads `data/movies.jsonl` one record at a time. A producer:
+
+- Stores each complete movie record by ID.
+- Normalizes its primary title.
+- Sends a small indexing job to each n-gram worker.
+
+The three workers own separate maps:
+
+- Unigram postings and deduplication state.
+- Bigram postings and deduplication state.
+- Trigram postings and deduplication state.
+
+This avoids concurrent map writes without putting locks on the indexing hot path.
+
+### Search
+
+Search uses n-gram postings to retrieve candidates, then verifies every query word with case-insensitive substring matching. Query words may appear in any order.
+
+Search currently returns full `models.Movie` values. Results are sorted by Bayesian rating score in descending order, with the movie ID used as the current tie-breaker.
+
+The Bayesian score combines:
+
+- The IMDb average rating.
+- The number of IMDb votes.
+- A global-average prior of `6.5`.
+- A minimum-vote prior of `1,000`.
+
+Titles without a ratings record use `NumVotes: 0` and no average rating, causing them to rank below rated titles.
+
+## Setup
+
+The project requires Go 1.25.1 or newer, as specified in `go.mod`.
+
+IMDb data is not checked into the repository. The ETL command downloads it locally.
+
+## Generate Data
+
+Run the ETL program from the repository root:
 
 ```bash
-go run . "red phone"
+go run ./data
 ```
 
-The program loads `data/products.json`, builds the index, and prints up to ten matches with timing information.
+This downloads the current IMDb title and ratings files and generates:
+
+```text
+data/movies.jsonl
+```
+
+The source downloads are stored temporarily as:
+
+```text
+data/title.basics.tsv.gz
+data/title.ratings.tsv.gz
+```
+
+These files, along with the generated JSONL file, are ignored by Git.
+
+IMDb provides these datasets for personal and non-commercial use subject to its terms. Review the [IMDb dataset terms](https://developer.imdb.com/non-commercial-datasets/) before using or redistributing the data.
+
+## Run Search
+
+After generating `data/movies.jsonl`, provide a query as the first argument:
+
+```bash
+go run . "Star Wars"
+```
+
+The application builds the index, searches the query, prints up to ten results, and reports processing and search timings.
+
+Example output has the general form:
+
+```text
+Processed 12679821 records in 30.00s
+        Star Wars: Episode V - The Empire Strikes Back (1980) [votes -> score]
+Found 45 results in 0.10s
+```
+
+## Known Limitations
+
+- There is currently no minimum query-length requirement.
+- One-character queries can produce very large candidate sets.
+- Search currently sorts all verified matches even though the CLI displays only ten.
+- Search currently returns full movie values rather than a limited top-K result set.
+- The next optimization is a search-level result limit backed by a fixed-size heap, which will avoid sorting every match for broad queries.
