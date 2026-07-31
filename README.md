@@ -15,6 +15,8 @@ This project explores several autocomplete implementations over a product catalo
 9. Inverted n-gram index.
 10. Concurrent inverted n-gram index with product IDs, candidate verification, optimized set intersections, and sorted results.
 11. The above, plus an etl script for 12M IMDB records, partial streaming implementation
+12. The above, with full streaming for ETL & Indexing
+13. The above, plus custom sorting based on the Bayesian average for each movie rating
 
 The earlier implementations are preserved in Git history rather than in the working tree.
 

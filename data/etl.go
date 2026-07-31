@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,15 @@ import (
 
 	models "github.com/noahtigner/go-autocomplete/models"
 )
+
+type gzipFileCloser struct {
+	file   *os.File
+	reader *gzip.Reader
+}
+
+func (c gzipFileCloser) Close() error {
+	return errors.Join(c.reader.Close(), c.file.Close())
+}
 
 func downloadData(fileUrl string) error {
 	fileUrlParts := strings.Split(fileUrl, "/")
@@ -42,30 +52,28 @@ func downloadData(fileUrl string) error {
 	return nil
 }
 
-func decompressData(gzipStream io.Reader) (io.ReadCloser, error) {
-	reader, err := gzip.NewReader(gzipStream)
-	if err != nil {
-		return nil, err
-	}
-
-	return reader, nil
-}
-
 func openGzipScanner(path string) (*bufio.Scanner, io.Closer, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	readCloser, err := decompressData(file)
+	reader, err := gzip.NewReader(file)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Join(
+			err,
+			file.Close(),
+		)
 	}
 
-	scanner := bufio.NewScanner(readCloser)
+	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
-	return scanner, readCloser, nil
+	closer := gzipFileCloser{
+		file:   file,
+		reader: reader,
+	}
+	return scanner, closer, nil
 }
 
 func nextRating(scanner *bufio.Scanner) ([]string, bool, error) {
@@ -141,12 +149,13 @@ func parseMovie(fields []string) (models.Movie, error) {
 		Year:           year,
 		RuntimeMinutes: runtimeMinutes,
 		Genres:         fields[8],
+		NumVotes:       0, // default
 	}
 
 	return movie, nil
 }
 
-func etl() error {
+func etl() (err error) {
 	dataSets := []string{
 		"https://datasets.imdbws.com/title.basics.tsv.gz",
 		"https://datasets.imdbws.com/title.ratings.tsv.gz",
@@ -172,18 +181,30 @@ func etl() error {
 	if err != nil {
 		return err
 	}
-	defer output.Close()
 
 	writer := bufio.NewWriter(output)
-	defer writer.Flush()
+
+	defer func() {
+		err = errors.Join(err, writer.Flush(), output.Close())
+	}()
 
 	encoder := json.NewEncoder(writer)
 
 	titleScanner, titleCloser, err := openGzipScanner("./data/title.basics.tsv.gz")
-	defer titleCloser.Close()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, titleCloser.Close())
+	}()
 
 	ratingScanner, ratingCloser, err := openGzipScanner("./data/title.ratings.tsv.gz")
-	defer ratingCloser.Close()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, ratingCloser.Close())
+	}()
 
 	// Read past the headers. The ratings file has fewer rows than the titles
 	// file, so the two scanners cannot be advanced in lockstep.
@@ -251,7 +272,7 @@ func etl() error {
 			}
 
 			movie.AverageRating = &averageRating
-			movie.NumVotes = &numVotes
+			movie.NumVotes = numVotes
 
 			ratedTitleCount++
 			ratingFields, ratingExists, err = nextRating(ratingScanner)

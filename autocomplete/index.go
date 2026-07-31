@@ -1,27 +1,35 @@
 package autocomplete
 
 import (
-	"slices"
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
 	"strings"
 	"sync"
 
 	models "github.com/noahtigner/go-autocomplete/models"
-	sets "github.com/noahtigner/go-autocomplete/sets"
 )
 
 // This approach supports substring matching across each word in the query
 // It builds the different n-gram indexes concurrently and uses an optimized set intersection algorithm
 
 type Index struct {
-	unigrams        map[string][]int
-	bigrams         map[string][]int
-	trigrams        map[string][]int
-	productNames    map[int]string
-	normalizedNames map[int]string
+	unigrams map[string][]int
+	bigrams  map[string][]int
+	trigrams map[string][]int
+
+	records map[int]*models.Movie
 
 	lastSeenUnigrams map[string]int
 	lastSeenBigrams  map[string]int
 	lastSeenTrigrams map[string]int
+}
+
+type indexJob struct {
+	id             int
+	normalizedName string
 }
 
 func (idx Index) nIndex(n int) map[string][]int {
@@ -62,147 +70,112 @@ func gramsForQueryWord(word string) []string {
 	return getNGrams(word, len(word))
 }
 
-func BuildIndex(movies []models.Movie) Index {
-	reverseIndex := Index{
-		unigrams:        make(map[string][]int),
-		bigrams:         make(map[string][]int),
-		trigrams:        make(map[string][]int),
-		productNames:    make(map[int]string),
-		normalizedNames: make(map[int]string),
-	}
-
-	for _, movie := range movies {
-		reverseIndex.productNames[movie.ID] = movie.PrimaryTitle
-		reverseIndex.normalizedNames[movie.ID] = strings.ToLower(movie.PrimaryTitle)
-	}
-
-	var wg sync.WaitGroup
-
-	for n := 1; n <= 3; n += 1 {
-		wg.Go(func() {
-			index := reverseIndex.nIndex(n)
-			lastSeen := make(map[string]int)
-
-			for _, movie := range movies {
-				normalizedName := reverseIndex.normalizedNames[movie.ID]
-
-				for word := range strings.FieldsSeq(normalizedName) {
-					for _, gram := range getNGrams(word, n) {
-						// prevent duplicate products caused by repeated grams
-						if previous, exists := lastSeen[gram]; exists && previous == movie.ID {
-							continue
-						}
-
-						lastSeen[gram] = movie.ID
-						index[gram] = append(index[gram], movie.ID)
-					}
-				}
-			}
-		})
-	}
-
-	wg.Wait()
-
-	return reverseIndex
+func normalizeName(title string) string {
+	return strings.ToLower(title)
 }
 
-func NewIndex() Index {
-	reverseIndex := Index{
-		unigrams:         make(map[string][]int),
-		bigrams:          make(map[string][]int),
-		trigrams:         make(map[string][]int),
-		productNames:     make(map[int]string),
-		normalizedNames:  make(map[int]string),
-		lastSeenUnigrams: make(map[string]int),
-		lastSeenBigrams:  make(map[string]int),
-		lastSeenTrigrams: make(map[string]int),
+func openJsonlFile(fileName string) (*os.File, *json.Decoder, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open %s: %w", fileName, err)
 	}
-	return reverseIndex
+
+	decoder := json.NewDecoder(bufio.NewReader(file))
+	return file, decoder, nil
 }
 
-func (idx *Index) Finalize() {
+func (idx *Index) finalize() {
 	idx.lastSeenUnigrams = nil
 	idx.lastSeenBigrams = nil
 	idx.lastSeenTrigrams = nil
 }
 
-func (idx Index) ProcessRecordMetadata(record models.Movie) {
-	idx.productNames[record.ID] = record.PrimaryTitle
-	idx.normalizedNames[record.ID] = strings.ToLower(record.PrimaryTitle)
+func (idx Index) processRecordMetadata(movie *models.Movie) {
+	idx.records[movie.ID] = movie
 }
 
-func (idx Index) ProcessRecord(record models.Movie, n int) {
+func (idx Index) processRecord(id int, normalizedName string, n int) {
 	index := idx.nIndex(n)
 	lastSeen := idx.lastSeenNIndex(n)
-
-	normalizedName := idx.normalizedNames[record.ID]
 
 	for word := range strings.FieldsSeq(normalizedName) {
 		for _, gram := range getNGrams(word, n) {
 			// prevent duplicate products caused by repeated grams
-			if previous, exists := lastSeen[gram]; exists && previous == record.ID {
+			if previous, exists := lastSeen[gram]; exists && previous == id {
 				continue
 			}
 
-			lastSeen[gram] = record.ID
-			index[gram] = append(index[gram], record.ID)
+			lastSeen[gram] = id
+			index[gram] = append(index[gram], id)
 		}
 	}
 }
 
-func retrieveSearchCandidates(reverseIndex Index, queryWords []string) sets.Set[int] {
-	wordResults := make([]sets.Set[int], len(queryWords))
+func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
+	index := Index{
+		unigrams:         make(map[string][]int),
+		bigrams:          make(map[string][]int),
+		trigrams:         make(map[string][]int),
+		records:          make(map[int]*models.Movie),
+		lastSeenUnigrams: make(map[string]int),
+		lastSeenBigrams:  make(map[string]int),
+		lastSeenTrigrams: make(map[string]int),
+	}
 
-	for i, word := range queryWords {
-		var gramSets []sets.Set[int]
-		grams := sets.Unique(gramsForQueryWord(word))
-		index := reverseIndex.nIndex(len(word))
+	jobs := [3]chan indexJob{
+		make(chan indexJob, 1024),
+		make(chan indexJob, 1024),
+		make(chan indexJob, 1024),
+	}
 
-		for _, gram := range grams {
-			gramSet := sets.NewSet[int]()
-			for _, match := range index[gram] {
-				gramSet.Add(match)
+	var wg sync.WaitGroup
+	for workerNum := 1; workerNum <= 3; workerNum++ {
+		wg.Go(func() {
+			for job := range jobs[workerNum-1] {
+				index.processRecord(job.id, job.normalizedName, workerNum)
 			}
-			gramSets = append(gramSets, gramSet)
-		}
-
-		wordResults[i] = sets.Intersection(gramSets)
+		})
 	}
 
-	intersection := sets.Intersection(wordResults)
-	return intersection
-}
+	file, decoder, err := openJsonlFile(fileName)
+	if err != nil {
+		return Index{}, 0, err
+	}
+	defer file.Close()
 
-func filterSearchCandidates(reverseIndex Index, queryWords []string, candidates sets.Set[int]) []string {
-	results := make([]string, 0, len(candidates))
+	processedCount := 0
+	for {
+		var movie models.Movie
+		err = decoder.Decode(&movie)
 
-	for candidate := range candidates {
-		matchesAll := true
-		for _, word := range queryWords {
-			if !strings.Contains(reverseIndex.normalizedNames[candidate], word) {
-				matchesAll = false
-				break
+		if err == io.EOF {
+			for _, jobChannel := range jobs {
+				close(jobChannel)
 			}
+			break
 		}
-		if matchesAll {
-			results = append(results, reverseIndex.productNames[candidate])
+		if err != nil {
+			for _, jobChannel := range jobs {
+				close(jobChannel)
+			}
+			return Index{}, 0, err
 		}
+
+		index.processRecordMetadata(&movie)
+
+		job := indexJob{
+			id:             movie.ID,
+			normalizedName: normalizeName(movie.PrimaryTitle),
+		}
+
+		for _, jobChannel := range jobs {
+			jobChannel <- job
+		}
+		processedCount++
 	}
 
-	return results
-}
+	wg.Wait()
+	index.finalize()
 
-func (reverseIndex Index) Search(query string) []string {
-	normalizedQuery := strings.ToLower(query)
-	queryWords := strings.Fields(normalizedQuery)
-
-	if len(queryWords) == 0 {
-		return []string{}
-	}
-
-	candidates := retrieveSearchCandidates(reverseIndex, queryWords)
-	results := filterSearchCandidates(reverseIndex, queryWords, candidates)
-	slices.Sort(results)
-
-	return results
+	return index, processedCount, nil
 }
