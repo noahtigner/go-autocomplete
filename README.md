@@ -14,6 +14,7 @@ This project explores several autocomplete implementations over a product catalo
 8. Inverted trigram index.
 9. Inverted n-gram index.
 10. Concurrent inverted n-gram index with product IDs, candidate verification, optimized set intersections, and sorted results.
+11. The above, plus an etl script for 12M IMDB records, partial streaming implementation
 
 The earlier implementations are preserved in Git history rather than in the working tree.
 

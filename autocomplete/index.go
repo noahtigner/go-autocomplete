@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/noahtigner/go-autocomplete/products"
-	"github.com/noahtigner/go-autocomplete/sets"
+	models "github.com/noahtigner/go-autocomplete/models"
+	sets "github.com/noahtigner/go-autocomplete/sets"
 )
 
 // This approach supports substring matching across each word in the query
@@ -18,17 +18,31 @@ type Index struct {
 	trigrams        map[string][]int
 	productNames    map[int]string
 	normalizedNames map[int]string
+
+	lastSeenUnigrams map[string]int
+	lastSeenBigrams  map[string]int
+	lastSeenTrigrams map[string]int
 }
 
-func (i Index) nIndex(n int) map[string][]int {
-	n = min(3, max(n, 1))
+func (idx Index) nIndex(n int) map[string][]int {
 	switch n {
 	case 1:
-		return i.unigrams
+		return idx.unigrams
 	case 2:
-		return i.bigrams
+		return idx.bigrams
 	default:
-		return i.trigrams
+		return idx.trigrams
+	}
+}
+
+func (idx Index) lastSeenNIndex(n int) map[string]int {
+	switch n {
+	case 1:
+		return idx.lastSeenUnigrams
+	case 2:
+		return idx.lastSeenBigrams
+	default:
+		return idx.lastSeenTrigrams
 	}
 }
 
@@ -48,7 +62,7 @@ func gramsForQueryWord(word string) []string {
 	return getNGrams(word, len(word))
 }
 
-func BuildIndex(products []products.Product) Index {
+func BuildIndex(movies []models.Movie) Index {
 	reverseIndex := Index{
 		unigrams:        make(map[string][]int),
 		bigrams:         make(map[string][]int),
@@ -57,9 +71,9 @@ func BuildIndex(products []products.Product) Index {
 		normalizedNames: make(map[int]string),
 	}
 
-	for _, product := range products {
-		reverseIndex.productNames[product.ID] = product.Name
-		reverseIndex.normalizedNames[product.ID] = strings.ToLower(product.Name)
+	for _, movie := range movies {
+		reverseIndex.productNames[movie.ID] = movie.PrimaryTitle
+		reverseIndex.normalizedNames[movie.ID] = strings.ToLower(movie.PrimaryTitle)
 	}
 
 	var wg sync.WaitGroup
@@ -69,18 +83,18 @@ func BuildIndex(products []products.Product) Index {
 			index := reverseIndex.nIndex(n)
 			lastSeen := make(map[string]int)
 
-			for _, product := range products {
-				normalizedName := reverseIndex.normalizedNames[product.ID]
+			for _, movie := range movies {
+				normalizedName := reverseIndex.normalizedNames[movie.ID]
 
 				for word := range strings.FieldsSeq(normalizedName) {
 					for _, gram := range getNGrams(word, n) {
 						// prevent duplicate products caused by repeated grams
-						if previous, exists := lastSeen[gram]; exists && previous == product.ID {
+						if previous, exists := lastSeen[gram]; exists && previous == movie.ID {
 							continue
 						}
 
-						lastSeen[gram] = product.ID
-						index[gram] = append(index[gram], product.ID)
+						lastSeen[gram] = movie.ID
+						index[gram] = append(index[gram], movie.ID)
 					}
 				}
 			}
@@ -90,6 +104,50 @@ func BuildIndex(products []products.Product) Index {
 	wg.Wait()
 
 	return reverseIndex
+}
+
+func NewIndex() Index {
+	reverseIndex := Index{
+		unigrams:         make(map[string][]int),
+		bigrams:          make(map[string][]int),
+		trigrams:         make(map[string][]int),
+		productNames:     make(map[int]string),
+		normalizedNames:  make(map[int]string),
+		lastSeenUnigrams: make(map[string]int),
+		lastSeenBigrams:  make(map[string]int),
+		lastSeenTrigrams: make(map[string]int),
+	}
+	return reverseIndex
+}
+
+func (idx *Index) Finalize() {
+	idx.lastSeenUnigrams = nil
+	idx.lastSeenBigrams = nil
+	idx.lastSeenTrigrams = nil
+}
+
+func (idx Index) ProcessRecordMetadata(record models.Movie) {
+	idx.productNames[record.ID] = record.PrimaryTitle
+	idx.normalizedNames[record.ID] = strings.ToLower(record.PrimaryTitle)
+}
+
+func (idx Index) ProcessRecord(record models.Movie, n int) {
+	index := idx.nIndex(n)
+	lastSeen := idx.lastSeenNIndex(n)
+
+	normalizedName := idx.normalizedNames[record.ID]
+
+	for word := range strings.FieldsSeq(normalizedName) {
+		for _, gram := range getNGrams(word, n) {
+			// prevent duplicate products caused by repeated grams
+			if previous, exists := lastSeen[gram]; exists && previous == record.ID {
+				continue
+			}
+
+			lastSeen[gram] = record.ID
+			index[gram] = append(index[gram], record.ID)
+		}
+	}
 }
 
 func retrieveSearchCandidates(reverseIndex Index, queryWords []string) sets.Set[int] {

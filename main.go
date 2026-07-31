@@ -1,31 +1,42 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"sync"
 	"time"
 
-	"github.com/noahtigner/go-autocomplete/autocomplete"
-	"github.com/noahtigner/go-autocomplete/products"
+	autocomplete "github.com/noahtigner/go-autocomplete/autocomplete"
+	models "github.com/noahtigner/go-autocomplete/models"
 )
 
-func readFileIntoMemory(filename string) ([]products.Product, error) {
-	bytes, err := os.ReadFile(filename)
-
+func readFileIntoMemory(filename string) ([]models.Movie, error) {
+	file, err := os.Open(filename)
 	if err != nil {
-		return nil, fmt.Errorf("Error: %v", err)
+		return nil, fmt.Errorf("open %s: %w", filename, err)
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(bufio.NewReader(file))
+	movies := make([]models.Movie, 0)
+
+	for {
+		var movie models.Movie
+		err := decoder.Decode(&movie)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("decode %s: %w", filename, err)
+		}
+
+		movies = append(movies, movie)
 	}
 
-	var products []products.Product
-
-	err = json.Unmarshal(bytes, &products)
-
-	if err != nil {
-		return nil, fmt.Errorf("Error: %v", err)
-	}
-
-	return products, nil
+	return movies, nil
 }
 
 func main() {
@@ -43,19 +54,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	products, err := readFileIntoMemory("./data/products.json")
+	records, err := readFileIntoMemory("./data/movies.jsonl")
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
 	ioDuration := time.Since(ioStart)
-	fmt.Printf("Loaded %d records in %.2fs\n", len(products), ioDuration.Seconds())
+	fmt.Printf("Loaded %d records in %.2fs\n", len(records), ioDuration.Seconds())
 
 	indexingStart := time.Now()
-	index := autocomplete.BuildIndex(products)
+	// index := autocomplete.BuildIndex(records)
+	index := autocomplete.NewIndex()
+	for _, record := range records {
+		index.ProcessRecordMetadata(record)
+	}
+	var wg sync.WaitGroup
+	for n := 1; n <= 3; n++ {
+		wg.Go(func() {
+			for _, record := range records {
+				index.ProcessRecord(record, n)
+			}
+		})
+	}
+	wg.Wait()
+	index.Finalize()
+
 	indexingDuration := time.Since(indexingStart)
-	fmt.Printf("Indexed %d records in %.2fs\n", len(products), indexingDuration.Seconds())
+	fmt.Printf("Indexed %d records in %.2fs\n", len(records), indexingDuration.Seconds())
 
 	searchStart := time.Now()
 	matches := index.Search(query)
