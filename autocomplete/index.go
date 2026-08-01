@@ -15,12 +15,17 @@ import (
 // This approach supports substring matching across each word in the query
 // It builds the different n-gram indexes concurrently and uses an optimized set intersection algorithm
 
+type IndexRecordItem struct {
+	models.Movie
+	bayesianRating float64
+}
+
 type Index struct {
 	unigrams map[string][]int
 	bigrams  map[string][]int
 	trigrams map[string][]int
 
-	records map[int]*models.Movie
+	records map[int]*IndexRecordItem
 
 	lastSeenUnigrams map[string]int
 	lastSeenBigrams  map[string]int
@@ -91,7 +96,10 @@ func (idx *Index) finalize() {
 }
 
 func (idx Index) processRecordMetadata(movie *models.Movie) {
-	idx.records[movie.ID] = movie
+	idx.records[movie.ID] = &IndexRecordItem{
+		Movie:          *movie,
+		bayesianRating: movie.BayesianRating(),
+	}
 }
 
 func (idx Index) processRecord(id int, normalizedName string, n int) {
@@ -116,7 +124,7 @@ func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 		unigrams:         make(map[string][]int),
 		bigrams:          make(map[string][]int),
 		trigrams:         make(map[string][]int),
-		records:          make(map[int]*models.Movie),
+		records:          make(map[int]*IndexRecordItem),
 		lastSeenUnigrams: make(map[string]int),
 		lastSeenBigrams:  make(map[string]int),
 		lastSeenTrigrams: make(map[string]int),

@@ -16,9 +16,9 @@ type SearchResult struct {
 	Movies []models.Movie
 }
 
-func ranksLower(a, b models.Movie) bool {
-	leftScore := a.BayesianRating()
-	rightScore := b.BayesianRating()
+func ranksLower(a, b *IndexRecordItem) bool {
+	leftScore := a.bayesianRating
+	rightScore := b.bayesianRating
 
 	if leftScore != rightScore {
 		return leftScore < rightScore
@@ -28,7 +28,7 @@ func ranksLower(a, b models.Movie) bool {
 }
 
 type movieHeap struct {
-	items    []models.Movie
+	items    []*IndexRecordItem
 	capacity int
 }
 
@@ -36,7 +36,7 @@ func (h movieHeap) Len() int           { return len(h.items) }
 func (h movieHeap) Less(i, j int) bool { return ranksLower(h.items[i], h.items[j]) }
 func (h movieHeap) Swap(i, j int)      { h.items[i], h.items[j] = h.items[j], h.items[i] }
 func (h *movieHeap) Push(x any) {
-	h.items = append(h.items, x.(models.Movie))
+	h.items = append(h.items, x.(*IndexRecordItem))
 }
 func (h *movieHeap) Pop() any {
 	old := h.items
@@ -48,13 +48,13 @@ func (h *movieHeap) Pop() any {
 
 func newMovieHeap(limit int) *movieHeap {
 	movieHeap := &movieHeap{
-		items:    make([]models.Movie, 0, limit),
+		items:    make([]*IndexRecordItem, 0, limit),
 		capacity: limit,
 	}
 	heap.Init(movieHeap)
 	return movieHeap
 }
-func (h *movieHeap) add(x models.Movie) {
+func (h *movieHeap) add(x *IndexRecordItem) {
 	heap.Push(h, x)
 	if h.Len() > h.capacity {
 		heap.Pop(h)
@@ -65,7 +65,11 @@ func (h *movieHeap) topKResults() []models.Movie {
 	sort.Slice(resultsCopy, func(i, j int) bool {
 		return ranksLower(resultsCopy[j], resultsCopy[i])
 	})
-	return resultsCopy
+	topKMovies := make([]models.Movie, len(resultsCopy))
+	for i, resultRecord := range resultsCopy {
+		topKMovies[i] = resultRecord.Movie
+	}
+	return topKMovies
 }
 
 func retrieveSearchCandidateIds(reverseIndex Index, queryWords []string) sets.Set[int] {
@@ -118,14 +122,14 @@ func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) 
 	topResults := newMovieHeap(limit)
 
 	for candidateId := range candidateIds {
-		movie := reverseIndex.records[candidateId]
+		record := reverseIndex.records[candidateId]
 
-		if !matchesAllQueryWords(movie.PrimaryTitle, queryWords) {
+		if !matchesAllQueryWords(record.PrimaryTitle, queryWords) {
 			continue
 		}
 
 		totalMatches += 1
-		topResults.add(*movie)
+		topResults.add(record)
 	}
 
 	heapResults := topResults.topKResults()
