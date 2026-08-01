@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	models "github.com/noahtigner/go-autocomplete/models"
 )
@@ -25,11 +26,11 @@ func (c gzipFileCloser) Close() (err error) {
 	return errors.Join(c.reader.Close(), c.file.Close())
 }
 
-func downloadData(fileUrl string) (err error) {
+func downloadData(client *http.Client, fileUrl string) (err error) {
 	fileUrlParts := strings.Split(fileUrl, "/")
 	fileName := fileUrlParts[len(fileUrlParts)-1]
 
-	resp, err := http.Get(fileUrl)
+	resp, err := client.Get(fileUrl)
 	if err != nil {
 		return err
 	}
@@ -167,9 +168,13 @@ func etl() (err error) {
 	var dlWaitGroup sync.WaitGroup
 	dlErrChan := make(chan error, len(dataSets))
 
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
 	for _, fileUrl := range dataSets {
 		dlWaitGroup.Go(func() {
-			if err := downloadData(fileUrl); err != nil {
+			if err := downloadData(client, fileUrl); err != nil {
 				dlErrChan <- err
 			}
 		})

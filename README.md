@@ -41,7 +41,7 @@ The importer streams both compressed input files and streams JSONL output. The g
 
 The application reads `data/movies.jsonl` one record at a time. A producer:
 
-- Stores each complete movie record by ID.
+- Stores each complete movie record by ID alongside a precomputed Bayesian rating.
 - Normalizes its primary title.
 - Sends a small indexing job to each n-gram worker.
 
@@ -57,7 +57,7 @@ This avoids concurrent map writes without putting locks on the indexing hot path
 
 Search uses n-gram postings to retrieve candidates, then verifies every query word with case-insensitive substring matching. Query words may appear in any order.
 
-Search currently returns a `SearchResult` containing the total number of matching records and up to the requested number of full `models.Movie` values. Results are selected with a fixed-size min-heap and sorted by Bayesian rating score in descending order. Movie ID is used as the descending tie-breaker.
+Search returns a `SearchResult` containing the total number of matching records and up to the requested number of full `models.Movie` values. Results are selected with a fixed-size min-heap and sorted by the Bayesian rating score precomputed during indexing. Movie ID is used as the descending tie-breaker. Empty queries and negative limits return an error.
 
 The Bayesian score combines:
 
@@ -88,7 +88,7 @@ This downloads the current IMDb title and ratings files and generates:
 data/movies.jsonl
 ```
 
-The source downloads are stored temporarily as:
+The source downloads are stored locally as:
 
 ```text
 data/title.basics.tsv.gz
@@ -120,7 +120,7 @@ Found 45 results in 0.10s
 ## Known Limitations
 
 - There is currently no minimum query-length requirement.
-- One-character queries can produce very large candidate sets.
+- One- and two-character queries can produce very large candidate sets.
 - A precomputed cache of popular results for one- and two-character query words is planned.
 - Candidate retrieval still materializes n-gram candidate sets before top-K ranking.
 - Exact top-K ranking still verifies every candidate that survives n-gram retrieval.

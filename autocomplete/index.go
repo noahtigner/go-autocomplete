@@ -108,7 +108,7 @@ func (idx Index) processRecord(id int, normalizedName string, n int) {
 
 	for word := range strings.FieldsSeq(normalizedName) {
 		for _, gram := range getNGrams(word, n) {
-			// prevent duplicate products caused by repeated grams
+			// prevent duplicate records caused by repeated grams
 			if previous, exists := lastSeen[gram]; exists && previous == id {
 				continue
 			}
