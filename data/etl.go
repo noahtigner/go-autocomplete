@@ -21,7 +21,7 @@ type gzipFileCloser struct {
 	reader *gzip.Reader
 }
 
-func (c gzipFileCloser) Close() error {
+func (c gzipFileCloser) Close() (err error) {
 	return errors.Join(c.reader.Close(), c.file.Close())
 }
 
@@ -43,7 +43,11 @@ func downloadData(fileUrl string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() {
+		if closeErr := out.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
 
 	if _, err := io.Copy(out, resp.Body); err != nil {
 		return err
