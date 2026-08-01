@@ -2,4 +2,4 @@ data/*.gz
 data/*.tsv
 data/*.jsonl
 
-.DS_STORE
+.DS_Store

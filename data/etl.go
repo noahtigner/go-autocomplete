@@ -25,7 +25,7 @@ func (c gzipFileCloser) Close() (err error) {
 	return errors.Join(c.reader.Close(), c.file.Close())
 }
 
-func downloadData(fileUrl string) error {
+func downloadData(fileUrl string) (err error) {
 	fileUrlParts := strings.Split(fileUrl, "/")
 	fileName := fileUrlParts[len(fileUrlParts)-1]
 

@@ -34,7 +34,13 @@ func main() {
 	fmt.Printf("Processed %d records in %.2fs\n", processedCount, ioDuration.Seconds())
 
 	searchStart := time.Now()
-	results := index.Search(query, 10)
+
+	results, err := index.Search(query, 10)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
 	searchDuration := time.Since(searchStart)
 
 	for _, match := range results.Movies {

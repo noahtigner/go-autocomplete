@@ -2,7 +2,7 @@
 
 This project explores autocomplete and substring-search implementations in Go. The current dataset is derived from IMDb title metadata and ratings rather than a synthetic product catalog.
 
-The active implementation builds a concurrent inverted n-gram index over approximately 12 million movie, television, and video titles. It supports multi-word, case-insensitive substring matching and returns full movie records ordered by a Bayesian rating score.
+The active implementation builds a concurrent inverted n-gram index over approximately 12 million movie, television, and video titles. It supports multi-word, case-insensitive substring matching and returns a bounded set of full movie records ordered by a Bayesian rating score.
 
 ## Progression
 
@@ -20,6 +20,7 @@ The active implementation builds a concurrent inverted n-gram index over approxi
 12. JSONL output and streaming record ingestion.
 13. Three long-lived indexing workers with separate map ownership for unigrams, bigrams, and trigrams.
 14. Full movie-record retention by ID and Bayesian rating-based result ordering.
+15. Bounded top-K result selection with a fixed-size min-heap.
 
 Earlier implementations are preserved in Git history rather than in the working tree.
 
@@ -56,7 +57,7 @@ This avoids concurrent map writes without putting locks on the indexing hot path
 
 Search uses n-gram postings to retrieve candidates, then verifies every query word with case-insensitive substring matching. Query words may appear in any order.
 
-Search currently returns full `models.Movie` values. Results are sorted by Bayesian rating score in descending order, with the movie ID used as the current tie-breaker.
+Search currently returns a `SearchResult` containing the total number of matching records and up to the requested number of full `models.Movie` values. Results are selected with a fixed-size min-heap and sorted by Bayesian rating score in descending order. Movie ID is used as the descending tie-breaker.
 
 The Bayesian score combines:
 
@@ -120,6 +121,7 @@ Found 45 results in 0.10s
 
 - There is currently no minimum query-length requirement.
 - One-character queries can produce very large candidate sets.
-- Search currently sorts all verified matches even though the CLI displays only ten.
-- Search currently returns full movie values rather than a limited top-K result set.
-- The next optimization is a search-level result limit backed by a fixed-size heap, which will avoid sorting every match for broad queries.
+- A precomputed cache of popular results for one- and two-character query words is planned.
+- Candidate retrieval still materializes n-gram candidate sets before top-K ranking.
+- Exact top-K ranking still verifies every candidate that survives n-gram retrieval.
+- Automated tests and benchmarks have not yet been added.

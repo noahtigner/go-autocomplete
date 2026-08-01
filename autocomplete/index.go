@@ -139,6 +139,10 @@ func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 
 	file, decoder, err := openJsonlFile(fileName)
 	if err != nil {
+		for _, jobChannel := range jobs {
+			close(jobChannel)
+		}
+		wg.Wait()
 		return Index{}, 0, err
 	}
 	defer file.Close()
@@ -147,17 +151,14 @@ func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 	for {
 		var movie models.Movie
 		err = decoder.Decode(&movie)
-
-		if err == io.EOF {
-			for _, jobChannel := range jobs {
-				close(jobChannel)
-			}
-			break
-		}
 		if err != nil {
 			for _, jobChannel := range jobs {
 				close(jobChannel)
 			}
+			if err == io.EOF {
+				break
+			}
+			wg.Wait()
 			return Index{}, 0, err
 		}
 
