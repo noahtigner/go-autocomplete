@@ -8,6 +8,11 @@ import (
 	sets "github.com/noahtigner/go-autocomplete/sets"
 )
 
+type SearchResult struct {
+	Total  int
+	Movies []models.Movie
+}
+
 func retrieveSearchCandidateIds(reverseIndex Index, queryWords []string) sets.Set[int] {
 	wordResults := make([]sets.Set[int], len(queryWords))
 
@@ -51,12 +56,12 @@ func filterSearchCandidates(reverseIndex Index, queryWords []string, candidateId
 	return results
 }
 
-func (reverseIndex Index) Search(query string) []models.Movie {
+func (reverseIndex Index) Search(query string, limit int) SearchResult {
 	normalizedQuery := strings.ToLower(query)
 	queryWords := strings.Fields(normalizedQuery)
 
 	if len(queryWords) == 0 {
-		return []models.Movie{}
+		return SearchResult{}
 	}
 
 	candidateIds := retrieveSearchCandidateIds(reverseIndex, queryWords)
@@ -79,5 +84,8 @@ func (reverseIndex Index) Search(query string) []models.Movie {
 		return results[i].ID > results[j].ID
 	})
 
-	return results
+	return SearchResult{
+		Total:  len(resultIds),
+		Movies: results[:min(len(results), limit)],
+	}
 }

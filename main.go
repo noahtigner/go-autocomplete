@@ -34,10 +34,10 @@ func main() {
 	fmt.Printf("Processed %d records in %.2fs\n", processedCount, ioDuration.Seconds())
 
 	searchStart := time.Now()
-	matches := index.Search(query)
+	results := index.Search(query, 10)
 	searchDuration := time.Since(searchStart)
 
-	for _, match := range matches[:min(len(matches), 10)] {
+	for _, match := range results.Movies {
 		yearStr := "unknown"
 		if match.Year != nil {
 			yearStr = strconv.Itoa(*match.Year)
@@ -45,5 +45,5 @@ func main() {
 		fmt.Printf("\t%s (%s)\t[%d votes -> %f]\n", match.PrimaryTitle, yearStr, match.NumVotes, match.BayesianRating())
 	}
 
-	fmt.Printf("Found %d results in %.2fs\n", len(matches), searchDuration.Seconds())
+	fmt.Printf("Found %d results in %.2fs\n", results.Total, searchDuration.Seconds())
 }
