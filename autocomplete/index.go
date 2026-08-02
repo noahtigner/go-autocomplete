@@ -37,6 +37,12 @@ type indexJob struct {
 	normalizedName string
 }
 
+func (idx *Index) clean() {
+	idx.lastSeenUnigrams = nil
+	idx.lastSeenBigrams = nil
+	idx.lastSeenTrigrams = nil
+}
+
 func (idx Index) nIndex(n int) map[string][]int {
 	switch n {
 	case 1:
@@ -87,12 +93,6 @@ func openJsonlFile(fileName string) (*os.File, *json.Decoder, error) {
 
 	decoder := json.NewDecoder(bufio.NewReader(file))
 	return file, decoder, nil
-}
-
-func (idx *Index) finalize() {
-	idx.lastSeenUnigrams = nil
-	idx.lastSeenBigrams = nil
-	idx.lastSeenTrigrams = nil
 }
 
 func (idx Index) processRecordMetadata(movie *models.Movie) {
@@ -184,7 +184,7 @@ func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 	}
 
 	wg.Wait()
-	index.finalize()
+	index.clean()
 
 	return index, processedCount, nil
 }
