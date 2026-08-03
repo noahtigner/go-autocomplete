@@ -3,6 +3,7 @@ package autocomplete
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -205,4 +206,228 @@ func TestOpenJSONLFile(t *testing.T) {
 	})
 }
 
-// func TestProcessRecordMetadata(func)
+func TestProcessRecordMetadata(t *testing.T) {
+	index := Index{
+		records: make(map[int]*IndexRecordItem),
+	}
+
+	averageRating := 0.93
+	movie := models.Movie{
+		ID:             123,
+		TitleType:      "movie",
+		PrimaryTitle:   "Star Wars: Episode IV - A New Hope",
+		OriginalTitle:  "Star Wars",
+		IsAdult:        false,
+		Year:           nil,
+		RuntimeMinutes: nil,
+		Genres:         "Action, Science Fiction",
+		AverageRating:  &averageRating,
+		NumVotes:       123456,
+	}
+
+	expectedBayesianRating := movie.BayesianRating()
+
+	index.processRecordMetadata(&movie)
+
+	indexRecord, exists := index.records[movie.ID]
+	if !exists {
+		t.Fatalf("processRecordMetadata did not properly store movie with ID %d", movie.ID)
+	}
+
+	if indexRecord.Movie != movie {
+		t.Errorf("processRecordMetadata stored movie = %+v, want %+v", indexRecord.Movie, movie)
+	}
+
+	if indexRecord.bayesianRating != expectedBayesianRating {
+		t.Errorf("processRecordMetadata did not properly calculate the rating for movie with ID %d; expected %f, got %f", movie.ID, expectedBayesianRating, indexRecord.bayesianRating)
+	}
+}
+
+func TestProcessRecord(t *testing.T) {
+	expectedUnigramIndex := map[string][]int{
+		"s": {1, 99},
+		"t": {1, 99},
+		"a": {1, 99},
+		"r": {1, 99},
+		"w": {1},
+		"i": {99},
+		"b": {99},
+		"o": {99},
+		"n": {99},
+	}
+
+	expectedBigramIndex := map[string][]int{
+		"st": {1, 99},
+		"ta": {1, 99},
+		"ar": {1, 99},
+		"wa": {1},
+		"rs": {1},
+		"a":  {99},
+		"is": {99},
+		"bo": {99},
+		"or": {99},
+		"rn": {99},
+	}
+
+	expectedTrigramIndex := map[string][]int{
+		"sta": {1, 99},
+		"tar": {1, 99},
+		"war": {1},
+		"ars": {1},
+		"a":   {99},
+		"is":  {99},
+		"bor": {99},
+		"orn": {99},
+	}
+
+	tests := []struct {
+		n                int
+		expectedIndexMap map[string][]int
+		testName         string
+	}{
+		{1, expectedUnigramIndex, "unigrams"},
+		{2, expectedBigramIndex, "bigrams"},
+		{3, expectedTrigramIndex, "trigrams"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.testName, func(t *testing.T) {
+			index := Index{
+				unigrams:         make(map[string][]int),
+				bigrams:          make(map[string][]int),
+				trigrams:         make(map[string][]int),
+				lastSeenUnigrams: make(map[string]int),
+				lastSeenBigrams:  make(map[string]int),
+				lastSeenTrigrams: make(map[string]int),
+			}
+
+			index.processRecord(1, "star wars", tt.n)
+			index.processRecord(99, "a star is born", tt.n)
+
+			got := index.nIndex(tt.n)
+			if !maps.EqualFunc(got, tt.expectedIndexMap, func(got, want []int) bool {
+				return slices.Equal(got, want)
+			}) {
+				t.Errorf("processRecord %s map = %v, want %v", tt.testName, got, tt.expectedIndexMap)
+			}
+		})
+	}
+}
+
+func TestBuildIndexFromRecordStream(t *testing.T) {
+	t.Run("builds from fixture", func(t *testing.T) {
+		fixturePath := filepath.Join("..", "testdata", "etl", "movies.jsonl")
+
+		index, count, err := BuildIndexFromRecordStream(fixturePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count != 30 {
+			t.Errorf("processed count = %d, want 30", count)
+		}
+		if len(index.records) != 30 {
+			t.Errorf("record count = %d, want 30", len(index.records))
+		}
+
+		for _, id := range []int{1, 9, 23} {
+			if index.records[id] == nil {
+				t.Errorf("record %d was not indexed", id)
+			}
+		}
+
+		starWars := index.records[23]
+		if starWars == nil {
+			t.Fatal("record 23 was not indexed")
+		}
+		if starWars.PrimaryTitle != "Star Wars: A New Fixture" {
+			t.Errorf("record 23 title = %q, want %q", starWars.PrimaryTitle, "Star Wars: A New Fixture")
+		}
+		if starWars.AverageRating == nil || *starWars.AverageRating != 8.6 {
+			t.Errorf("record 23 average rating = %v, want 8.6", starWars.AverageRating)
+		}
+		if starWars.NumVotes != 1_000_000 {
+			t.Errorf("record 23 votes = %d, want 1000000", starWars.NumVotes)
+		}
+		if starWars.bayesianRating != starWars.Movie.BayesianRating() {
+			t.Errorf("record 23 cached rating = %v, want %v", starWars.bayesianRating, starWars.Movie.BayesianRating())
+		}
+
+		unrated := index.records[9]
+		if unrated == nil {
+			t.Fatal("record 9 was not indexed")
+		}
+		if unrated.AverageRating != nil || unrated.NumVotes != 0 || unrated.bayesianRating != 0 {
+			t.Errorf("record 9 = %+v, want an unrated movie", unrated)
+		}
+
+		if !slices.Equal(index.trigrams["moo"], []int{26}) {
+			t.Errorf("trigrams[\"moo\"] = %v, want [26]", index.trigrams["moo"])
+		}
+		if index.lastSeenUnigrams != nil || index.lastSeenBigrams != nil || index.lastSeenTrigrams != nil {
+			t.Error("last-seen maps were not cleared")
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		index, count, err := BuildIndexFromRecordStream(
+			filepath.Join(t.TempDir(), "missing.jsonl"),
+		)
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("error = %v, want an os.ErrNotExist error", err)
+		}
+		if count != 0 {
+			t.Errorf("processed count = %d, want 0", count)
+		}
+		assertZeroIndex(t, index)
+	})
+
+	t.Run("invalid JSONL", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "movies.jsonl")
+		contents := `{"id":1,"titleType":"movie","primaryTitle":"Test","originalTitle":"Test","isAdult":false,"year":null,"runtimeMinutes":null,"genres":"Drama","averageRating":null,"numVotes":0}` + "\ninvalid JSON\n"
+		if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		index, count, err := BuildIndexFromRecordStream(path)
+		if err == nil {
+			t.Fatal("expected an error for invalid JSONL")
+		}
+		if count != 0 {
+			t.Errorf("processed count = %d, want 0", count)
+		}
+		assertZeroIndex(t, index)
+	})
+
+	t.Run("empty file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "movies.jsonl")
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		index, count, err := BuildIndexFromRecordStream(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Errorf("processed count = %d, want 0", count)
+		}
+		if index.unigrams == nil || index.bigrams == nil || index.trigrams == nil || index.records == nil {
+			t.Fatal("successful empty build returned an uninitialized index")
+		}
+		if len(index.unigrams) != 0 || len(index.bigrams) != 0 || len(index.trigrams) != 0 || len(index.records) != 0 {
+			t.Error("empty input produced index entries")
+		}
+		if index.lastSeenUnigrams != nil || index.lastSeenBigrams != nil || index.lastSeenTrigrams != nil {
+			t.Error("last-seen maps were not cleared")
+		}
+	})
+}
+
+func assertZeroIndex(t *testing.T, index Index) {
+	t.Helper()
+
+	if index.unigrams != nil || index.bigrams != nil || index.trigrams != nil || index.records != nil ||
+		index.lastSeenUnigrams != nil || index.lastSeenBigrams != nil || index.lastSeenTrigrams != nil {
+		t.Errorf("index = %+v, want a zero-value index", index)
+	}
+}
