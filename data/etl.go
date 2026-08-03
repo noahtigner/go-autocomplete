@@ -160,6 +160,91 @@ func parseMovie(fields []string) (models.Movie, error) {
 	return movie, nil
 }
 
+func mergeTitleData(titleScanner, ratingScanner *bufio.Scanner, encoder *json.Encoder) (titleCount, ratedTitleCount int, err error) {
+	// Read past the headers. The ratings file has fewer rows than the titles
+	// file, so the two scanners cannot be advanced in lockstep.
+	if !titleScanner.Scan() {
+		if err := titleScanner.Err(); err != nil {
+			return 0, 0, err
+		}
+		return 0, 0, fmt.Errorf("Title file is empty")
+	}
+	if !ratingScanner.Scan() {
+		if err := ratingScanner.Err(); err != nil {
+			return 0, 0, err
+		}
+		return 0, 0, fmt.Errorf("Ratings file is empty")
+	}
+
+	ratingFields, ratingExists, err := nextRating(ratingScanner)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	for titleScanner.Scan() {
+		titleFields := strings.Split(strings.TrimSuffix(titleScanner.Text(), "\r"), "\t")
+
+		movie, err := parseMovie(titleFields)
+		if err != nil {
+			return 0, 0, err
+		}
+
+		titleCount++
+
+		var ratingID int
+		if ratingExists {
+			ratingID, err = parseIdField(ratingFields[0])
+			if err != nil {
+				return 0, 0, err
+			}
+		}
+
+		for ratingExists && ratingID < movie.ID {
+			ratingFields, ratingExists, err = nextRating(ratingScanner)
+			if err != nil {
+				return 0, 0, err
+			}
+			if ratingExists {
+				ratingID, err = parseIdField(ratingFields[0])
+				if err != nil {
+					return 0, 0, err
+				}
+			}
+		}
+
+		if ratingExists && ratingID == movie.ID {
+			averageRating, err := strconv.ParseFloat(ratingFields[1], 64)
+			if err != nil {
+				return 0, 0, fmt.Errorf("Error parsing averageRating field")
+			}
+
+			numVotes, err := strconv.Atoi(ratingFields[2])
+			if err != nil {
+				return 0, 0, fmt.Errorf("Error parsing numVotes field")
+			}
+
+			movie.AverageRating = &averageRating
+			movie.NumVotes = numVotes
+
+			ratedTitleCount++
+			ratingFields, ratingExists, err = nextRating(ratingScanner)
+			if err != nil {
+				return 0, 0, err
+			}
+		}
+
+		if err := encoder.Encode(movie); err != nil {
+			return 0, 0, err
+		}
+	}
+
+	if err := titleScanner.Err(); err != nil {
+		return 0, 0, err
+	}
+
+	return titleCount, ratedTitleCount, nil
+}
+
 func etl() (err error) {
 	dataSets := []string{
 		"https://datasets.imdbws.com/title.basics.tsv.gz",
@@ -197,8 +282,6 @@ func etl() (err error) {
 		err = errors.Join(err, writer.Flush(), output.Close())
 	}()
 
-	encoder := json.NewEncoder(writer)
-
 	titleScanner, titleCloser, err := openGzipScanner("./data/title.basics.tsv.gz")
 	if err != nil {
 		return err
@@ -215,88 +298,8 @@ func etl() (err error) {
 		err = errors.Join(err, ratingCloser.Close())
 	}()
 
-	// Read past the headers. The ratings file has fewer rows than the titles
-	// file, so the two scanners cannot be advanced in lockstep.
-	if !titleScanner.Scan() {
-		if err := titleScanner.Err(); err != nil {
-			return err
-		}
-		return fmt.Errorf("Title file is empty")
-	}
-	if !ratingScanner.Scan() {
-		if err := ratingScanner.Err(); err != nil {
-			return err
-		}
-		return fmt.Errorf("Ratings file is empty")
-	}
-
-	ratingFields, ratingExists, err := nextRating(ratingScanner)
+	titleCount, ratedTitleCount, err := mergeTitleData(titleScanner, ratingScanner, json.NewEncoder(writer))
 	if err != nil {
-		return err
-	}
-
-	titleCount := 0
-	ratedTitleCount := 0
-
-	for titleScanner.Scan() {
-		titleFields := strings.Split(strings.TrimSuffix(titleScanner.Text(), "\r"), "\t")
-
-		movie, err := parseMovie(titleFields)
-		if err != nil {
-			return err
-		}
-
-		titleCount++
-
-		var ratingId int
-		if ratingExists {
-			ratingId, err = parseIdField(ratingFields[0])
-			if err != nil {
-				return err
-			}
-		}
-
-		for ratingExists && ratingId < movie.ID {
-			ratingFields, ratingExists, err = nextRating(ratingScanner)
-			if err != nil {
-				return err
-			}
-			if ratingExists {
-				ratingId, err = parseIdField(ratingFields[0])
-				if err != nil {
-					return err
-				}
-			}
-		}
-
-		if ratingExists && ratingId == movie.ID {
-			averageRating, err := strconv.ParseFloat(ratingFields[1], 64)
-			if err != nil {
-				return fmt.Errorf("Error parsing averageRating field")
-			}
-
-			numVotes, err := strconv.Atoi(ratingFields[2])
-			if err != nil {
-				return fmt.Errorf("Error parsing numVotes field")
-			}
-
-			movie.AverageRating = &averageRating
-			movie.NumVotes = numVotes
-
-			ratedTitleCount++
-			ratingFields, ratingExists, err = nextRating(ratingScanner)
-			if err != nil {
-				return err
-			}
-		}
-
-		if err := encoder.Encode(movie); err != nil {
-			return err
-		}
-
-	}
-
-	if err := titleScanner.Err(); err != nil {
 		return err
 	}
 

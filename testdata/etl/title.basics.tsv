@@ -1,0 +1,31 @@
+tconst	titleType	primaryTitle	originalTitle	isAdult	startYear	endYear	runtimeMinutes	genres
+tt0000001	movie	A Star Is Born	A Star Is Born	0	1937	\N	111	Drama,Musical
+tt0000002	movie	Star Harbor	Star Harbor	0	2001	\N	98	Drama
+tt0000003	short	A	A	0	2010	\N	1	Short
+tt0000004	tvSeries	The Starship	The Starship	0	2015	2018	\N	Sci-Fi
+tt0000005	movie	Star Star	Star Star	0	2020	\N	100	Comedy
+tt0000006	videoGame	Starlight	Starlight	0	2019	\N	\N	Adventure
+tt0000007	tvEpisode	War of Stars	War of Stars	0	2021	\N	44	Sci-Fi
+tt0000008	movie	Northern Star	Northern Star	0	1999	\N	120	Drama
+tt0000009	movie	Starfall	Starfall	0	\N	\N	90	Action
+tt0000010	movie	A Tale of Two Stars	A Tale of Two Stars	0	2005	\N	105	Drama
+tt0000011	movie	The Long Night	The Long Night	0	2011	\N	110	Thriller
+tt0000012	movie	Café au Lait	Café au Lait	0	2012	\N	95	Romance
+tt0000013	tvMovie	It	It	0	1990	\N	192	Horror
+tt0000014	tvSeries	IT Crowd	The IT Crowd	0	2006	\N	30	Comedy
+tt0000015	movie	Étoile du Nord	Étoile du Nord	0	2017	\N	87	Drama
+tt0000016	movie	Banana	Banana	0	2014	\N	93	Comedy
+tt0000017	movie	Alpha Beta	Alpha Beta	0	2016	\N	101	Sci-Fi
+tt0000018	movie	Beta Alpha	Beta Alpha	0	2016	\N	101	Sci-Fi
+tt0000019	short	Repeated Repeated	Repeated Repeated	0	2020	\N	5	Short
+tt0000020	movie	One Two	One Two	0	2018	\N	88	Drama
+tt0000021	movie	The A Team	The A Team	0	2010	\N	117	Action
+tt0000022	movie	Zed	Zed	0	2022	\N	80	Drama
+tt0000023	movie	Star Wars: A New Fixture	Star Wars: A New Fixture	0	1977	\N	121	Adventure,Sci-Fi
+tt0000024	movie	Starman	Starman	0	1984	\N	115	Romance,Sci-Fi
+tt0000025	tvSeries	Star Trek: Fixture	Star Trek: Fixture	0	1966	1969	50	Sci-Fi
+tt0000026	movie	Moon	Moon	0	2009	\N	97	Drama
+tt0000027	tvEpisode	Episode A	Episode A	0	\N	\N	45	Drama
+tt0000028	movie	The	The	0	2024	\N	75	Comedy
+tt0000029	movie	Arc	Arc	0	2023	\N	60	Mystery
+tt0000030	movie	No Rating Yet	No Rating Yet	0	2025	\N	\N	Drama
