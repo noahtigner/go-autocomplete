@@ -21,10 +21,6 @@ func (s Set[T]) Contains(item T) bool {
 	return exists
 }
 
-func (s Set[T]) Get(item T) (T, bool) {
-	return item, s.Contains(item)
-}
-
 func (s Set[T]) ToSlice() []T {
 	slice := make([]T, len(s))
 	i := 0
@@ -35,24 +31,6 @@ func (s Set[T]) ToSlice() []T {
 	return slice
 }
 
-// suboptimal; use the next implementation
-func (s Set[T]) Intersection(otherSets []Set[T]) Set[T] {
-	if len(otherSets) == 0 {
-		return s
-	}
-
-	intersection := s
-	for _, otherSet := range otherSets {
-		for key := range intersection {
-			if !otherSet.Contains(key) {
-				intersection.Remove(key)
-			}
-		}
-	}
-	return intersection
-}
-
-// optimal approach
 func Intersection[T comparable](sets []Set[T]) Set[T] {
 	if len(sets) == 0 {
 		return NewSet[T]()
@@ -66,6 +44,9 @@ func Intersection[T comparable](sets []Set[T]) Set[T] {
 	for i := 1; i < len(sets); i += 1 {
 		if len(sets[i]) < len(sets[minSet]) {
 			minSet = i
+		}
+		if len(sets[minSet]) == 0 {
+			return NewSet[T]()
 		}
 	}
 
