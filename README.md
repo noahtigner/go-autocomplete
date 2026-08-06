@@ -117,6 +117,35 @@ Processed 12679821 records in 30.00s
 Found 45 results in 0.10s
 ```
 
+## Benchmarks
+
+Benchmarks use a locally generated, ignored sample of the IMDb JSONL data. Generate a deterministic 100,000-record sample from `data/movies.jsonl`:
+
+```bash
+go run ./cmd/benchmark-sample -count 100000
+```
+
+Generate a larger stress sample when needed:
+
+```bash
+go run ./cmd/benchmark-sample -count 1000000 -output data/stress-movies.jsonl
+```
+
+Run index-build and search benchmarks with allocation reporting:
+
+```bash
+go test -run '^$' -bench . -benchmem ./autocomplete
+```
+
+Use the stress sample for a specific benchmark by setting `GO_AUTOCOMPLETE_BENCH_DATA`:
+
+```bash
+GO_AUTOCOMPLETE_BENCH_DATA="$PWD/data/stress-movies.jsonl" \
+  go test -run '^$' -bench '^BenchmarkSearch/one_character$' -benchmem ./autocomplete
+```
+
+The search benchmark covers narrow, broad, one-character, two-character, no-match, and zero-limit queries. Benchmark samples are deterministic for a given input and seed; change the seed with `-seed` to sample a different distribution.
+
 ## Known Limitations
 
 - There is currently no minimum query-length requirement.
@@ -124,4 +153,3 @@ Found 45 results in 0.10s
 - A precomputed cache of popular results for one- and two-character query words is planned.
 - Candidate retrieval still materializes n-gram candidate sets before top-K ranking.
 - Exact top-K ranking still verifies every candidate that survives n-gram retrieval.
-- Automated tests and benchmarks have not yet been added.
