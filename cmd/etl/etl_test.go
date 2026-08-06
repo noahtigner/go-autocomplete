@@ -193,7 +193,7 @@ func TestOpenGzipScanner(t *testing.T) {
 }
 
 func fixturePath(fileName string) string {
-	return filepath.Join("..", "testdata", "etl", fileName)
+	return filepath.Join("../..", "testdata", "etl", fileName)
 }
 
 func fixtureScanner(t *testing.T, fileName string) *bufio.Scanner {

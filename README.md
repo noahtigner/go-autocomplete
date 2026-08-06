@@ -79,7 +79,7 @@ IMDb data is not checked into the repository. The ETL command downloads it local
 Run the ETL program from the repository root:
 
 ```bash
-go run ./data
+go run ./cmd/etl
 ```
 
 This downloads the current IMDb title and ratings files and generates:
@@ -117,6 +117,41 @@ Processed 12679821 records in 30.00s
 Found 45 results in 0.10s
 ```
 
+## Testing
+
+The test suite can be run with:
+
+```bash
+go test ./...
+```
+
+Race conditions can be checked with:
+
+```bash
+go test -count=1 -race ./...
+```
+
+### Code Coverage
+
+Per-package code coverage can be reported with:
+
+```bash
+go test -count=1 -cover ./...
+```
+
+Per-function code coverage can be reported with:
+
+```bash
+go tool cover -func=/tmp/go-autocomplete.cover
+```
+
+Executed and missed statements can be viewed in the browser with:
+
+```bash
+go tool cover -html=/tmp/go-autocomplete.cover
+```
+
+
 ## Known Limitations
 
 - There is currently no minimum query-length requirement.
@@ -124,4 +159,4 @@ Found 45 results in 0.10s
 - A precomputed cache of popular results for one- and two-character query words is planned.
 - Candidate retrieval still materializes n-gram candidate sets before top-K ranking.
 - Exact top-K ranking still verifies every candidate that survives n-gram retrieval.
-- Automated tests and benchmarks have not yet been added.
+- Automated benchmarks have not yet been added.
