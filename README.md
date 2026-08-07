@@ -151,6 +151,19 @@ Executed and missed statements can be viewed in the browser with:
 go tool cover -html=/tmp/go-autocomplete.cover
 ```
 
+#### Benchmarks
+
+Run
+
+```bash
+go test -run '^$' -bench='BenchmarkBuildIndex100K$' -benchmem -benchtime=1x -count=5 ./autocomplete 
+```
+
+or
+
+```bash
+go test -run '^$' -bench='BenchmarkSearchIndex100K$' -benchmem -benchtime=1x -count=5 ./autocomplete 
+```
 
 ## Known Limitations
 
@@ -159,4 +172,3 @@ go tool cover -html=/tmp/go-autocomplete.cover
 - A precomputed cache of popular results for one- and two-character query words is planned.
 - Candidate retrieval still materializes n-gram candidate sets before top-K ranking.
 - Exact top-K ranking still verifies every candidate that survives n-gram retrieval.
-- Automated benchmarks have not yet been added.
