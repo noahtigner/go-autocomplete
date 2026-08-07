@@ -162,7 +162,28 @@ go test -run '^$' -bench='BenchmarkBuildIndex100K$' -benchmem -benchtime=1x -cou
 or
 
 ```bash
-go test -run '^$' -bench='BenchmarkSearchIndex100K$' -benchmem -benchtime=1x -count=5 ./autocomplete 
+go test -run '^$' -bench='BenchmarkSearchIndex100K$' -benchmem -benchtime=1x -count=5 ./autocomplete
+```
+
+or
+
+```bash
+go test -run '^$' -bench='BenchmarkSearchIndex100K/common-unigram' -benchtime=10s -cpuprofile=/tmp/unigram.cpu -memprofile=/tmp/unigram.mem ./autocomplete
+go tool pprof -top /tmp/unigram.cpu\ngo tool pprof -top -alloc_space /tmp/unigram.mem
+```
+
+Run A/B benchmark comparisons with:
+
+```bash
+go test -run '^$' -bench '^BenchmarkSearchIndex100K$' -benchmem -benchtime=1s -count=10 ./autocomplete > old.txt
+
+# Apply the changes
+
+go test -run '^$' -bench '^BenchmarkSearchIndex100K$' -benchmem -benchtime=1s -count=10 ./autocomplete > new.txt
+
+# Compare the results
+
+go run golang.org/x/perf/cmd/benchstat@latest old.txt new.txt
 ```
 
 ## Known Limitations

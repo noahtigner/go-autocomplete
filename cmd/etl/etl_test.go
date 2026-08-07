@@ -23,8 +23,8 @@ func TestMergeTitleData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if titleCount != 30 {
-		t.Errorf("title count = %d, want 30", titleCount)
+	if titleCount != 31 {
+		t.Errorf("title count = %d, want 31", titleCount)
 	}
 	if ratedTitleCount != 18 {
 		t.Errorf("rated title count = %d, want 18", ratedTitleCount)

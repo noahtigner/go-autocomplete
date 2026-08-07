@@ -105,6 +105,17 @@ func matchesAllQueryWords(movieTitle string, queryWords []string) bool {
 	return true
 }
 
+func queryWordsRequireVerification(queryWords []string) bool {
+	// The byte-based index stores complete query words up to trigrams.
+	// If all query words are short, we can skip matchesAllQueryWords which massively reduces allocations
+	for _, word := range queryWords {
+		if len(word) > 3 {
+			return true
+		}
+	}
+	return false
+}
+
 func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) {
 	normalizedQuery := strings.ToLower(query)
 	queryWords := strings.Fields(normalizedQuery)
@@ -113,10 +124,11 @@ func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) 
 		return SearchResult{}, fmt.Errorf("At least one query word is required")
 	}
 	if limit < 0 {
-		return SearchResult{}, fmt.Errorf("A non-negative limit must be provided")
+		return SearchResult{}, fmt.Errorf("A non-negative limit is required")
 	}
 
 	candidateIds := retrieveSearchCandidateIds(reverseIndex, queryWords)
+	requiresVerification := queryWordsRequireVerification(queryWords)
 
 	totalMatches := 0
 	topResults := newMovieHeap(limit)
@@ -124,7 +136,7 @@ func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) 
 	for candidateId := range candidateIds {
 		record := reverseIndex.records[candidateId]
 
-		if !matchesAllQueryWords(record.PrimaryTitle, queryWords) {
+		if requiresVerification && !matchesAllQueryWords(record.PrimaryTitle, queryWords) {
 			continue
 		}
 

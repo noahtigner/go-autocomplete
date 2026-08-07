@@ -322,11 +322,11 @@ func TestBuildIndexFromRecordStream(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if count != 30 {
-			t.Errorf("processed count = %d, want 30", count)
+		if count != 31 {
+			t.Errorf("processed count = %d, want 31", count)
 		}
-		if len(index.records) != 30 {
-			t.Errorf("record count = %d, want 30", len(index.records))
+		if len(index.records) != 31 {
+			t.Errorf("record count = %d, want 31", len(index.records))
 		}
 
 		for _, id := range []int{1, 9, 23} {
