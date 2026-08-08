@@ -51,10 +51,25 @@ func newMovieHeap(limit int) *movieHeap {
 	return movieHeap
 }
 func (h *movieHeap) add(x *IndexRecordItem) {
-	heap.Push(h, x)
-	if h.Len() > h.capacity {
-		heap.Pop(h)
+	// Zero-capacity heap; do nothing
+	if h.capacity == 0 {
+		return
 	}
+
+	// Admit items until the heap reaches capacity
+	if h.Len() < h.capacity {
+		heap.Push(h, x)
+		return
+	}
+
+	// Discard items that do not outrank the current lowest result
+	if !ranksLower(h.items[0], x) {
+		return
+	}
+
+	// Replace the lowest-ranked item and restore heap order; equivalent to Push + Pop
+	h.items[0] = x
+	heap.Fix(h, 0)
 }
 func (h *movieHeap) topKResults() []models.Movie {
 	resultsCopy := slices.Clone(h.items)

@@ -1,6 +1,7 @@
 package autocomplete
 
 import (
+	"slices"
 	"testing"
 
 	models "github.com/noahtigner/go-autocomplete/models"
@@ -29,6 +30,89 @@ func TestRanksLower(t *testing.T) {
 	}
 }
 
-// func TestFixedSizeMinHeap(t *testing.T) {
-// 	index := buildFixtureIndex(t)
-// }
+func TestFixedSizeMinHeap(t *testing.T) {
+	tests := []struct {
+		name   string
+		limit  int
+		items  []IndexRecordItem
+		wantID []int
+	}{
+		{
+			name:  "zero capacity",
+			limit: 0,
+			items: []IndexRecordItem{
+				{Movie: models.Movie{ID: 1}, bayesianRating: 8},
+				{Movie: models.Movie{ID: 2}, bayesianRating: 9},
+			},
+			wantID: []int{},
+		},
+		{
+			name:  "fills heap",
+			limit: 3,
+			items: []IndexRecordItem{
+				{Movie: models.Movie{ID: 1}, bayesianRating: 5},
+				{Movie: models.Movie{ID: 2}, bayesianRating: 7},
+				{Movie: models.Movie{ID: 3}, bayesianRating: 6},
+			},
+			wantID: []int{2, 3, 1},
+		},
+		{
+			name:  "rejects lower-ranked item",
+			limit: 3,
+			items: []IndexRecordItem{
+				{Movie: models.Movie{ID: 1}, bayesianRating: 5},
+				{Movie: models.Movie{ID: 2}, bayesianRating: 7},
+				{Movie: models.Movie{ID: 3}, bayesianRating: 6},
+				{Movie: models.Movie{ID: 4}, bayesianRating: 4},
+			},
+			wantID: []int{2, 3, 1},
+		},
+		{
+			name:  "replaces lowest-ranked item",
+			limit: 3,
+			items: []IndexRecordItem{
+				{Movie: models.Movie{ID: 1}, bayesianRating: 5},
+				{Movie: models.Movie{ID: 2}, bayesianRating: 7},
+				{Movie: models.Movie{ID: 3}, bayesianRating: 6},
+				{Movie: models.Movie{ID: 4}, bayesianRating: 8},
+			},
+			wantID: []int{4, 2, 3},
+		},
+		{
+			name:  "higher ID wins rating tie",
+			limit: 2,
+			items: []IndexRecordItem{
+				{Movie: models.Movie{ID: 10}, bayesianRating: 7},
+				{Movie: models.Movie{ID: 20}, bayesianRating: 7},
+				{Movie: models.Movie{ID: 30}, bayesianRating: 7},
+			},
+			wantID: []int{30, 20},
+		},
+		{
+			name:  "lower ID loses rating tie",
+			limit: 2,
+			items: []IndexRecordItem{
+				{Movie: models.Movie{ID: 20}, bayesianRating: 7},
+				{Movie: models.Movie{ID: 30}, bayesianRating: 7},
+				{Movie: models.Movie{ID: 10}, bayesianRating: 7},
+			},
+			wantID: []int{30, 20},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			heap := newMovieHeap(tt.limit)
+			for i := range tt.items {
+				heap.add(&tt.items[i])
+			}
+
+			if got := movieIDs(heap.topKResults()); !slices.Equal(got, tt.wantID) {
+				t.Errorf("topKResults IDs = %v, want %v", got, tt.wantID)
+			}
+			if got := cap(heap.items); got != tt.limit {
+				t.Errorf("heap capacity = %d, want %d", got, tt.limit)
+			}
+		})
+	}
+}

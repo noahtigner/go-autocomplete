@@ -21,6 +21,7 @@ The active implementation builds a concurrent inverted n-gram index over approxi
 13. Three long-lived indexing workers with separate map ownership for unigrams, bigrams, and trigrams.
 14. Full movie-record retention by ID and Bayesian rating-based result ordering.
 15. Bounded top-K result selection with a fixed-size min-heap.
+16. The above, plus time & memory optimizations.
 
 Earlier implementations are preserved in Git history rather than in the working tree.
 
