@@ -64,8 +64,8 @@ func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) 
 	if len(queryWords) == 0 {
 		return SearchResult{}, fmt.Errorf("At least one query word is required")
 	}
-	if limit < 0 {
-		return SearchResult{}, fmt.Errorf("A non-negative limit is required")
+	if limit < 0 || limit > 100 {
+		return SearchResult{}, fmt.Errorf("A limit between 0 and 100 is required")
 	}
 
 	candidateIds := retrieveSearchCandidateIds(reverseIndex, queryWords)
