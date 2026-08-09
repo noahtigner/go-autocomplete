@@ -176,15 +176,15 @@ go tool pprof -top /tmp/unigram.cpu\ngo tool pprof -top -alloc_space /tmp/unigra
 Run A/B benchmark comparisons with:
 
 ```bash
-go test -run '^$' -bench '^BenchmarkSearchIndex100K$' -benchmem -benchtime=1s -count=10 ./autocomplete > old.txt
+go test -run '^$' -bench '^BenchmarkSearchIndex100K$' -benchmem -benchtime=1s -count=10 ./autocomplete > .data/bench-old.txt
 
 # Apply the changes
 
-go test -run '^$' -bench '^BenchmarkSearchIndex100K$' -benchmem -benchtime=1s -count=10 ./autocomplete > new.txt
+go test -run '^$' -bench '^BenchmarkSearchIndex100K$' -benchmem -benchtime=1s -count=10 ./autocomplete > .data/bench-new.txt
 
 # Compare the results
 
-go run golang.org/x/perf/cmd/benchstat@latest old.txt new.txt
+go run golang.org/x/perf/cmd/benchstat@latest .data/bench-old.txt .data/bench-new.txt
 ```
 
 ## Known Limitations

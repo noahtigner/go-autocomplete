@@ -36,7 +36,19 @@ func generateBenchmarkMovie(i int) models.Movie {
 	}
 }
 
+func generateSparseIDBenchmarkMovie(i int) models.Movie {
+	movie := generateBenchmarkMovie(i)
+	if i%2 == 0 {
+		movie.ID = 39_000_000 - i
+	}
+	return movie
+}
+
 func writeBenchmarkJSONL(b *testing.B, records int) (string, int64) {
+	return writeBenchmarkJSONLWithGenerator(b, records, generateBenchmarkMovie)
+}
+
+func writeBenchmarkJSONLWithGenerator(b *testing.B, records int, generateMovie func(int) models.Movie) (string, int64) {
 	b.Helper()
 
 	path := filepath.Join(b.TempDir(), "movies.jsonl")
@@ -49,7 +61,7 @@ func writeBenchmarkJSONL(b *testing.B, records int) (string, int64) {
 	encoder := json.NewEncoder(writer)
 
 	for i := range records {
-		if err := encoder.Encode(generateBenchmarkMovie(i)); err != nil {
+		if err := encoder.Encode(generateMovie(i)); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -70,7 +82,15 @@ func writeBenchmarkJSONL(b *testing.B, records int) (string, int64) {
 }
 
 func BenchmarkBuildIndex100k(b *testing.B) {
-	path, bytes := writeBenchmarkJSONL(b, 100_000)
+	benchmarkBuildIndex(b, generateBenchmarkMovie)
+}
+
+func BenchmarkBuildIndex100kSparseIDs(b *testing.B) {
+	benchmarkBuildIndex(b, generateSparseIDBenchmarkMovie)
+}
+
+func benchmarkBuildIndex(b *testing.B, generateMovie func(int) models.Movie) {
+	path, bytes := writeBenchmarkJSONLWithGenerator(b, 100_000, generateMovie)
 
 	b.SetBytes(bytes)
 	b.ReportAllocs()
