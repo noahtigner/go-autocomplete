@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	models "github.com/noahtigner/go-autocomplete/models"
+	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
 func TestRanksLower(t *testing.T) {
@@ -14,10 +14,10 @@ func TestRanksLower(t *testing.T) {
 		want     bool
 		testName string
 	}{
-		{IndexRecordItem{Movie: models.Movie{ID: 1}, bayesianRating: 7.5}, IndexRecordItem{Movie: models.Movie{ID: 1}, bayesianRating: 7.6}, true, "true if a.bayesianRating is lower"},
-		{IndexRecordItem{Movie: models.Movie{ID: 1}, bayesianRating: 7.6}, IndexRecordItem{Movie: models.Movie{ID: 1}, bayesianRating: 7.5}, false, "false if a.bayesianRating is higher"},
-		{IndexRecordItem{Movie: models.Movie{ID: 1}, bayesianRating: 7.5}, IndexRecordItem{Movie: models.Movie{ID: 2}, bayesianRating: 7.5}, true, "true if ratings are the same and a.ID is lower"},
-		{IndexRecordItem{Movie: models.Movie{ID: 2}, bayesianRating: 7.5}, IndexRecordItem{Movie: models.Movie{ID: 1}, bayesianRating: 7.5}, false, "false if ratings are the same and a.ID is higher"},
+		{IndexRecordItem{Movie: movies.Movie{ID: 1}, bayesianRating: 7.5}, IndexRecordItem{Movie: movies.Movie{ID: 1}, bayesianRating: 7.6}, true, "true if a.bayesianRating is lower"},
+		{IndexRecordItem{Movie: movies.Movie{ID: 1}, bayesianRating: 7.6}, IndexRecordItem{Movie: movies.Movie{ID: 1}, bayesianRating: 7.5}, false, "false if a.bayesianRating is higher"},
+		{IndexRecordItem{Movie: movies.Movie{ID: 1}, bayesianRating: 7.5}, IndexRecordItem{Movie: movies.Movie{ID: 2}, bayesianRating: 7.5}, true, "true if ratings are the same and a.ID is lower"},
+		{IndexRecordItem{Movie: movies.Movie{ID: 2}, bayesianRating: 7.5}, IndexRecordItem{Movie: movies.Movie{ID: 1}, bayesianRating: 7.5}, false, "false if ratings are the same and a.ID is higher"},
 	}
 
 	for _, tt := range tests {
@@ -41,8 +41,8 @@ func TestFixedSizeMinHeap(t *testing.T) {
 			name:  "zero capacity",
 			limit: 0,
 			items: []IndexRecordItem{
-				{Movie: models.Movie{ID: 1}, bayesianRating: 8},
-				{Movie: models.Movie{ID: 2}, bayesianRating: 9},
+				{Movie: movies.Movie{ID: 1}, bayesianRating: 8},
+				{Movie: movies.Movie{ID: 2}, bayesianRating: 9},
 			},
 			wantID: []int{},
 		},
@@ -50,9 +50,9 @@ func TestFixedSizeMinHeap(t *testing.T) {
 			name:  "fills heap",
 			limit: 3,
 			items: []IndexRecordItem{
-				{Movie: models.Movie{ID: 1}, bayesianRating: 5},
-				{Movie: models.Movie{ID: 2}, bayesianRating: 7},
-				{Movie: models.Movie{ID: 3}, bayesianRating: 6},
+				{Movie: movies.Movie{ID: 1}, bayesianRating: 5},
+				{Movie: movies.Movie{ID: 2}, bayesianRating: 7},
+				{Movie: movies.Movie{ID: 3}, bayesianRating: 6},
 			},
 			wantID: []int{2, 3, 1},
 		},
@@ -60,10 +60,10 @@ func TestFixedSizeMinHeap(t *testing.T) {
 			name:  "rejects lower-ranked item",
 			limit: 3,
 			items: []IndexRecordItem{
-				{Movie: models.Movie{ID: 1}, bayesianRating: 5},
-				{Movie: models.Movie{ID: 2}, bayesianRating: 7},
-				{Movie: models.Movie{ID: 3}, bayesianRating: 6},
-				{Movie: models.Movie{ID: 4}, bayesianRating: 4},
+				{Movie: movies.Movie{ID: 1}, bayesianRating: 5},
+				{Movie: movies.Movie{ID: 2}, bayesianRating: 7},
+				{Movie: movies.Movie{ID: 3}, bayesianRating: 6},
+				{Movie: movies.Movie{ID: 4}, bayesianRating: 4},
 			},
 			wantID: []int{2, 3, 1},
 		},
@@ -71,10 +71,10 @@ func TestFixedSizeMinHeap(t *testing.T) {
 			name:  "replaces lowest-ranked item",
 			limit: 3,
 			items: []IndexRecordItem{
-				{Movie: models.Movie{ID: 1}, bayesianRating: 5},
-				{Movie: models.Movie{ID: 2}, bayesianRating: 7},
-				{Movie: models.Movie{ID: 3}, bayesianRating: 6},
-				{Movie: models.Movie{ID: 4}, bayesianRating: 8},
+				{Movie: movies.Movie{ID: 1}, bayesianRating: 5},
+				{Movie: movies.Movie{ID: 2}, bayesianRating: 7},
+				{Movie: movies.Movie{ID: 3}, bayesianRating: 6},
+				{Movie: movies.Movie{ID: 4}, bayesianRating: 8},
 			},
 			wantID: []int{4, 2, 3},
 		},
@@ -82,9 +82,9 @@ func TestFixedSizeMinHeap(t *testing.T) {
 			name:  "higher ID wins rating tie",
 			limit: 2,
 			items: []IndexRecordItem{
-				{Movie: models.Movie{ID: 10}, bayesianRating: 7},
-				{Movie: models.Movie{ID: 20}, bayesianRating: 7},
-				{Movie: models.Movie{ID: 30}, bayesianRating: 7},
+				{Movie: movies.Movie{ID: 10}, bayesianRating: 7},
+				{Movie: movies.Movie{ID: 20}, bayesianRating: 7},
+				{Movie: movies.Movie{ID: 30}, bayesianRating: 7},
 			},
 			wantID: []int{30, 20},
 		},
@@ -92,9 +92,9 @@ func TestFixedSizeMinHeap(t *testing.T) {
 			name:  "lower ID loses rating tie",
 			limit: 2,
 			items: []IndexRecordItem{
-				{Movie: models.Movie{ID: 20}, bayesianRating: 7},
-				{Movie: models.Movie{ID: 30}, bayesianRating: 7},
-				{Movie: models.Movie{ID: 10}, bayesianRating: 7},
+				{Movie: movies.Movie{ID: 20}, bayesianRating: 7},
+				{Movie: movies.Movie{ID: 30}, bayesianRating: 7},
+				{Movie: movies.Movie{ID: 10}, bayesianRating: 7},
 			},
 			wantID: []int{30, 20},
 		},

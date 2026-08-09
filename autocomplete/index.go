@@ -9,14 +9,14 @@ import (
 	"strings"
 	"sync"
 
-	models "github.com/noahtigner/go-autocomplete/models"
+	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
 // This approach supports substring matching across each word in the query
 // It builds the different n-gram indexes concurrently and uses an optimized set intersection algorithm
 
 type IndexRecordItem struct {
-	models.Movie
+	movies.Movie
 	bayesianRating float64
 }
 
@@ -95,7 +95,7 @@ func openJsonlFile(fileName string) (*os.File, *json.Decoder, error) {
 	return file, decoder, nil
 }
 
-func (idx Index) processRecordMetadata(movie *models.Movie) {
+func (idx Index) processRecordMetadata(movie *movies.Movie) {
 	idx.records[movie.ID] = &IndexRecordItem{
 		Movie:          *movie,
 		bayesianRating: movie.BayesianRating(),
@@ -157,7 +157,7 @@ func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 
 	processedCount := 0
 	for {
-		var movie models.Movie
+		var movie movies.Movie
 		err = decoder.Decode(&movie)
 		if err != nil {
 			for _, jobChannel := range jobs {

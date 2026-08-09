@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/noahtigner/go-autocomplete/models"
+	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
 var benchmarkTitleTemplates = []string{
@@ -19,7 +19,7 @@ var benchmarkTitleTemplates = []string{
 	"Night Shift",
 }
 
-func generateBenchmarkMovie(i int) models.Movie {
+func generateBenchmarkMovie(i int) movies.Movie {
 	title := fmt.Sprintf(
 		"%s %06d",
 		benchmarkTitleTemplates[i%len(benchmarkTitleTemplates)],
@@ -27,7 +27,7 @@ func generateBenchmarkMovie(i int) models.Movie {
 	)
 	rating := max(min(4.0+float64(i%60)/10, 9.9), 0.1)
 
-	return models.Movie{
+	return movies.Movie{
 		ID:            i + 1,
 		TitleType:     "movie",
 		PrimaryTitle:  title,
@@ -36,19 +36,7 @@ func generateBenchmarkMovie(i int) models.Movie {
 	}
 }
 
-func generateSparseIDBenchmarkMovie(i int) models.Movie {
-	movie := generateBenchmarkMovie(i)
-	if i%2 == 0 {
-		movie.ID = 39_000_000 - i
-	}
-	return movie
-}
-
 func writeBenchmarkJSONL(b *testing.B, records int) (string, int64) {
-	return writeBenchmarkJSONLWithGenerator(b, records, generateBenchmarkMovie)
-}
-
-func writeBenchmarkJSONLWithGenerator(b *testing.B, records int, generateMovie func(int) models.Movie) (string, int64) {
 	b.Helper()
 
 	path := filepath.Join(b.TempDir(), "movies.jsonl")
@@ -61,7 +49,7 @@ func writeBenchmarkJSONLWithGenerator(b *testing.B, records int, generateMovie f
 	encoder := json.NewEncoder(writer)
 
 	for i := range records {
-		if err := encoder.Encode(generateMovie(i)); err != nil {
+		if err := encoder.Encode(generateBenchmarkMovie(i)); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -82,15 +70,7 @@ func writeBenchmarkJSONLWithGenerator(b *testing.B, records int, generateMovie f
 }
 
 func BenchmarkBuildIndex100k(b *testing.B) {
-	benchmarkBuildIndex(b, generateBenchmarkMovie)
-}
-
-func BenchmarkBuildIndex100kSparseIDs(b *testing.B) {
-	benchmarkBuildIndex(b, generateSparseIDBenchmarkMovie)
-}
-
-func benchmarkBuildIndex(b *testing.B, generateMovie func(int) models.Movie) {
-	path, bytes := writeBenchmarkJSONLWithGenerator(b, 100_000, generateMovie)
+	path, bytes := writeBenchmarkJSONL(b, 100_000)
 
 	b.SetBytes(bytes)
 	b.ReportAllocs()

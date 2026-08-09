@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	models "github.com/noahtigner/go-autocomplete/models"
+	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
 type gzipFileCloser struct {
@@ -107,21 +107,21 @@ func parseIdField(s string) (int, error) {
 	return strconv.Atoi(strings.ReplaceAll(s, "t", ""))
 }
 
-func parseMovie(fields []string) (models.Movie, error) {
+func parseMovie(fields []string) (movies.Movie, error) {
 	if len(fields) != 9 {
-		return models.Movie{}, fmt.Errorf("Encountered title record with the wrong number of fields")
+		return movies.Movie{}, fmt.Errorf("Encountered title record with the wrong number of fields")
 	}
 
 	id, err := parseIdField(fields[0])
 	if err != nil {
-		return models.Movie{}, fmt.Errorf("Error parsing id field, %s\n", fields)
+		return movies.Movie{}, fmt.Errorf("Error parsing id field, %s\n", fields)
 	}
 
 	var year *int
 	if fields[5] != "\\N" {
 		value, err := strconv.Atoi(fields[5])
 		if err != nil {
-			return models.Movie{}, fmt.Errorf("Error parsing startYear field, %s\n", fields)
+			return movies.Movie{}, fmt.Errorf("Error parsing startYear field, %s\n", fields)
 		}
 		year = &value
 	}
@@ -129,7 +129,7 @@ func parseMovie(fields []string) (models.Movie, error) {
 	if fields[6] != "\\N" {
 		endYear, err := strconv.Atoi(fields[6])
 		if err != nil {
-			return models.Movie{}, fmt.Errorf("Error parsing endYear field")
+			return movies.Movie{}, fmt.Errorf("Error parsing endYear field")
 		}
 		if year == nil || endYear > *year {
 			year = &endYear
@@ -140,12 +140,12 @@ func parseMovie(fields []string) (models.Movie, error) {
 	if fields[7] != "\\N" {
 		value, err := strconv.Atoi(fields[7])
 		if err != nil {
-			return models.Movie{}, fmt.Errorf("Error parsing runtimeMinutes field. %s\n", fields)
+			return movies.Movie{}, fmt.Errorf("Error parsing runtimeMinutes field. %s\n", fields)
 		}
 		runtimeMinutes = &value
 	}
 
-	movie := models.Movie{
+	movie := movies.Movie{
 		ID:             id,
 		TitleType:      fields[1],
 		PrimaryTitle:   fields[2],

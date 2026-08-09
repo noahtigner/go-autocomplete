@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	models "github.com/noahtigner/go-autocomplete/models"
+	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
 func TestSearch(t *testing.T) {
@@ -135,6 +135,7 @@ func TestSearchInvalidInput(t *testing.T) {
 		{name: "empty query", query: "", limit: 10},
 		{name: "whitespace-only query", query: " \t\n", limit: 10},
 		{name: "negative limit", query: "star", limit: -1},
+		{name: "excessively large limit", query: "star", limit: 101},
 	}
 
 	for _, tt := range tests {
@@ -163,7 +164,7 @@ func buildFixtureIndex(t *testing.T) Index {
 func buildOneByteRegressionIndex(t *testing.T) Index {
 	t.Helper()
 
-	movies := []models.Movie{
+	movies := []movies.Movie{
 		{ID: 39_063_631, PrimaryTitle: "A B"},
 		{ID: 2, PrimaryTitle: "A"},
 		{ID: 2_670_090, PrimaryTitle: "B"},
@@ -204,7 +205,7 @@ func buildOneByteRegressionIndex(t *testing.T) Index {
 	return index
 }
 
-func movieIDs(movies []models.Movie) []int {
+func movieIDs(movies []movies.Movie) []int {
 	ids := make([]int, len(movies))
 	for i, movie := range movies {
 		ids[i] = movie.ID

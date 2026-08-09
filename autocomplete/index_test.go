@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	models "github.com/noahtigner/go-autocomplete/models"
+	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
 func TestClean(t *testing.T) {
@@ -183,7 +183,7 @@ func TestOpenJSONLFile(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = file.Close() })
 
-		var movie models.Movie
+		var movie movies.Movie
 		if err := decoder.Decode(&movie); err != nil {
 			t.Fatal(err)
 		}
@@ -212,7 +212,7 @@ func TestProcessRecordMetadata(t *testing.T) {
 	}
 
 	averageRating := 0.93
-	movie := models.Movie{
+	movie := movies.Movie{
 		ID:             123,
 		TitleType:      "movie",
 		PrimaryTitle:   "Star Wars: Episode IV - A New Hope",

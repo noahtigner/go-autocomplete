@@ -5,7 +5,7 @@ import (
 	"slices"
 	"sort"
 
-	models "github.com/noahtigner/go-autocomplete/models"
+	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
 func ranksLower(a, b *IndexRecordItem) bool {
@@ -71,12 +71,12 @@ func (h *movieHeap) add(x *IndexRecordItem) {
 	h.items[0] = x
 	heap.Fix(h, 0)
 }
-func (h *movieHeap) topKResults() []models.Movie {
+func (h *movieHeap) topKResults() []movies.Movie {
 	resultsCopy := slices.Clone(h.items)
 	sort.Slice(resultsCopy, func(i, j int) bool {
 		return ranksLower(resultsCopy[j], resultsCopy[i])
 	})
-	topKMovies := make([]models.Movie, len(resultsCopy))
+	topKMovies := make([]movies.Movie, len(resultsCopy))
 	for i, resultRecord := range resultsCopy {
 		topKMovies[i] = resultRecord.Movie
 	}
