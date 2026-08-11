@@ -19,6 +19,19 @@ var benchmarkTitleTemplates = []string{
 	"Night Shift",
 }
 
+var diverseBenchmarkTitleTemplates = []string{
+	"The Alpha Archive",
+	"Beta Orbit Chronicle",
+	"Gamma Delta Theater",
+	"Éclair Cinema",
+	"7! Signal",
+	"Zebra Horizon",
+	"ABC X BCD",
+	"Quasar Atlas",
+	"Silent Meadow",
+	"Night Harbor",
+}
+
 func generateBenchmarkMovie(i int) movies.Movie {
 	title := fmt.Sprintf(
 		"%s %06d",
@@ -36,7 +49,52 @@ func generateBenchmarkMovie(i int) movies.Movie {
 	}
 }
 
+func generateDiverseBenchmarkMovie(i int) movies.Movie {
+	title := fmt.Sprintf(
+		"%s %06d",
+		diverseBenchmarkTitleTemplates[i%len(diverseBenchmarkTitleTemplates)],
+		i,
+	)
+	rating := max(min(4.0+float64(i%60)/10, 9.9), 0.1)
+
+	return movies.Movie{
+		ID:            10_000_000 + i*10_003,
+		TitleType:     "movie",
+		PrimaryTitle:  title,
+		AverageRating: &rating,
+		NumVotes:      100 + i%100_000,
+	}
+}
+
+func generateSlotBoundaryBenchmarkMovie(i int) movies.Movie {
+	title := "Plain"
+	if i == 63 || i == 64 {
+		title = "Zulu"
+	}
+	rating := max(min(4.0+float64(i%60)/10, 9.9), 0.1)
+
+	return movies.Movie{
+		ID:            50_000_000 + i*10_003,
+		TitleType:     "movie",
+		PrimaryTitle:  title,
+		AverageRating: &rating,
+		NumVotes:      100 + i,
+	}
+}
+
 func writeBenchmarkJSONL(b *testing.B, records int) (string, int64) {
+	return writeBenchmarkJSONLWithGenerator(b, records, generateBenchmarkMovie)
+}
+
+func writeDiverseBenchmarkJSONL(b *testing.B, records int) (string, int64) {
+	return writeBenchmarkJSONLWithGenerator(b, records, generateDiverseBenchmarkMovie)
+}
+
+func writeSlotBoundaryBenchmarkJSONL(b *testing.B) (string, int64) {
+	return writeBenchmarkJSONLWithGenerator(b, 130, generateSlotBoundaryBenchmarkMovie)
+}
+
+func writeBenchmarkJSONLWithGenerator(b *testing.B, records int, generate func(int) movies.Movie) (string, int64) {
 	b.Helper()
 
 	path := filepath.Join(b.TempDir(), "movies.jsonl")
@@ -49,7 +107,7 @@ func writeBenchmarkJSONL(b *testing.B, records int) (string, int64) {
 	encoder := json.NewEncoder(writer)
 
 	for i := range records {
-		if err := encoder.Encode(generateBenchmarkMovie(i)); err != nil {
+		if err := encoder.Encode(generate(i)); err != nil {
 			b.Fatal(err)
 		}
 	}
