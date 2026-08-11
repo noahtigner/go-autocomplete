@@ -3,6 +3,7 @@ package autocomplete
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 	sets "github.com/noahtigner/go-autocomplete/internal/sets"
@@ -57,7 +58,7 @@ func queryWordsRequireVerification(queryWords []string) bool {
 	return false
 }
 
-func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) {
+func (reverseIndex Index) oldSearch(query string, limit int) (SearchResult, error) {
 	if limit < 0 || limit > 100 {
 		return SearchResult{}, fmt.Errorf("A limit between 0 and 100 is required")
 	}
@@ -69,46 +70,8 @@ func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) 
 		return SearchResult{}, fmt.Errorf("At least one query word is required")
 	}
 
-	// The routing contract should be:
-	// All query words are one-byte terms:
-	// 	Intersect character bitmaps. No title verification needed.
-
-	// At least one query word is not one byte:
-	// 	Retrieve candidates using only the two- and three-byte indexes.
-	// 	Verify every query word against the normalized title, including one-byte words.
-
-	// anyQueryWordsGt1Byte := false
-	// anyQueryWordsEq1Byte := false
-	// for _, word := range queryWords {
-	// 	if len(word) > 1 {
-	// 		anyQueryWordsGt1Byte = true
-	// 	} else {
-	// 		anyQueryWordsEq1Byte = true
-	// 	}
-	// }
-	lookupWords := make([]string, 0, len(queryWords))
-	hasNonUnigram := false
-	// queryWordsNoIndexLookups := make([]string, 0, len(queryWords))
-	for _, word := range queryWords {
-		if len(word) > 1 {
-			lookupWords = append(lookupWords, word)
-			hasNonUnigram = true
-			// } else {
-			// 	queryWordsNoIndexLookups = append(queryWordsNoIndexLookups, word)
-		}
-	}
-
-	requiresVerification := len(lookupWords) != len(queryWords) || queryWordsRequireVerification(queryWords)
-	// // TODO: If all query words are single-character, do bitmap checks
-	if !hasNonUnigram {
-		lookupWords = queryWords
-	}
-
-	// candidateIds := retrieveSearchCandidateIds(reverseIndex, queryWords)
-	candidateIds := retrieveSearchCandidateIds(reverseIndex, lookupWords)
-	// requiresVerification := queryWordsRequireVerification(queryWords)
-
-	// issue - still need something like requiresVerification to optimize normal cases
+	candidateIds := retrieveSearchCandidateIds(reverseIndex, queryWords)
+	requiresVerification := queryWordsRequireVerification(queryWords)
 
 	totalMatches := 0
 	topResults := newMovieHeap(limit)
@@ -119,9 +82,6 @@ func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) 
 		if requiresVerification && !matchesAllQueryWords(record.PrimaryTitle, queryWords) {
 			continue
 		}
-		// if !matchesAllQueryWords(record.PrimaryTitle, queryWords) {
-		// 	continue
-		// }
 
 		totalMatches += 1
 		topResults.add(record)
@@ -133,4 +93,135 @@ func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) 
 		Total:  totalMatches,
 		Movies: heapResults,
 	}, nil
+}
+
+func (reverseIndex *Index) searchAllQueryWordsUnigrams(queryWords []string, limit int) SearchResult {
+	uniqueQueryChars := strings.Join(sets.Unique(queryWords), "")
+	candidateBitSets := make([]*sets.BitSet, 0)
+
+	for i := range uniqueQueryChars {
+		char := uniqueQueryChars[i]
+
+		if reverseIndex.unigrams[char] == nil {
+			return SearchResult{
+				Total:  0,
+				Movies: []movies.Movie{},
+			}
+		}
+
+		candidateBitSets = append(candidateBitSets, reverseIndex.unigrams[char])
+	}
+
+	topResults := newMovieHeap(limit)
+
+	var visit func(int)
+	if limit > 0 {
+		visit = func(slot int) {
+			topResults.add(reverseIndex.recordBySlot[slot])
+		}
+	}
+
+	totalMatches := sets.ForEachIntersection(candidateBitSets, visit)
+
+	heapResults := topResults.topKResults()
+
+	return SearchResult{
+		Total:  totalMatches,
+		Movies: heapResults,
+	}
+}
+
+func (reverseIndex *Index) searchAllQueryWordsMultigrams(lookupWords []string, singleCharWords []string, limit int) SearchResult {
+	// Collect pointers to each single-char word's bitSet
+	singleCharBitSets := make([]*sets.BitSet, len(singleCharWords))
+	for i, word := range singleCharWords {
+		bitSet := reverseIndex.unigrams[word[0]]
+
+		if bitSet == nil {
+			return SearchResult{
+				Total:  0,
+				Movies: []movies.Movie{},
+			}
+		}
+
+		singleCharBitSets[i] = bitSet
+	}
+
+	candidateIds := retrieveSearchCandidateIds(*reverseIndex, lookupWords)
+	requiresVerification := queryWordsRequireVerification(lookupWords)
+	totalMatches := 0
+	topResults := newMovieHeap(limit)
+
+	// Assess each candidate
+	for candidateId := range candidateIds {
+		record := reverseIndex.records[candidateId]
+
+		// Check the single-character words
+		matchesSingleChars := true
+		for _, bitSet := range singleCharBitSets {
+			if !bitSet.Contains(record.slot) {
+				matchesSingleChars = false
+				break
+			}
+		}
+		if !matchesSingleChars {
+			continue
+		}
+
+		// Check the multi-character words
+		if requiresVerification && !matchesAllQueryWords(record.PrimaryTitle, lookupWords) {
+			continue
+		}
+
+		totalMatches += 1
+		if limit > 0 {
+			topResults.add(record)
+		}
+	}
+
+	heapResults := topResults.topKResults()
+
+	return SearchResult{
+		Total:  totalMatches,
+		Movies: heapResults,
+	}
+}
+
+func (reverseIndex *Index) newSearch(query string, limit int) (SearchResult, error) {
+	if limit < 0 || limit > 100 {
+		return SearchResult{}, fmt.Errorf("A limit between 0 and 100 is required")
+	}
+
+	normalizedQuery := strings.ToLower(query)
+	queryWords := strings.Fields(normalizedQuery)
+
+	if len(queryWords) == 0 {
+		return SearchResult{}, fmt.Errorf("At least one query word is required")
+	}
+
+	lookupWords := make([]string, 0, len(queryWords))
+	singleCharWords := make([]string, 0, len(queryWords))
+	hasNonUnigram := false
+	for _, word := range queryWords {
+		if len(word) != 1 || word[0] >= utf8.RuneSelf {
+			lookupWords = append(lookupWords, word)
+			hasNonUnigram = true
+		} else {
+			singleCharWords = append(singleCharWords, word)
+		}
+	}
+
+	if !hasNonUnigram {
+		return reverseIndex.searchAllQueryWordsUnigrams(queryWords, limit), nil
+	}
+	return reverseIndex.searchAllQueryWordsMultigrams(lookupWords, singleCharWords, limit), nil
+
+}
+
+func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) {
+	useNew := true
+	if useNew {
+		return reverseIndex.newSearch(query, limit)
+	}
+	return reverseIndex.oldSearch(query, limit)
 }

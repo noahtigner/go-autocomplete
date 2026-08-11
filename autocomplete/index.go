@@ -8,8 +8,10 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	movies "github.com/noahtigner/go-autocomplete/internal/movies"
+	sets "github.com/noahtigner/go-autocomplete/internal/sets"
 )
 
 // This approach supports substring matching across each word in the query
@@ -18,24 +20,30 @@ import (
 type IndexRecordItem struct {
 	movies.Movie
 	bayesianRating float64
+	slot           int // dense bitmap offset for unigram postings
+}
+
+type indexJob struct {
+	id             int // raw IMDb ID for bigram/trigram postings
+	slot           int // dense bitmap offset for unigram postings
+	normalizedName string
 }
 
 type Index struct {
-	unigrams map[string][]int
-	bigrams  map[string][]int
-	trigrams map[string][]int
+	unigramsOld map[string][]int // TODO: remove
+	unigrams    [utf8.RuneSelf]*sets.BitSet
+	bigrams     map[string][]int
+	trigrams    map[string][]int
 
-	records map[int]*IndexRecordItem
+	records      map[int]*IndexRecordItem
+	recordBySlot []*IndexRecordItem
 
-	lastSeenUnigrams map[string]int
+	lastSeenUnigrams map[string]int // TODO: remove
 	lastSeenBigrams  map[string]int
 	lastSeenTrigrams map[string]int
 }
 
-type indexJob struct {
-	id             int
-	normalizedName string
-}
+var maxRecords = 13_000_000
 
 func (idx *Index) clean() {
 	idx.lastSeenUnigrams = nil
@@ -46,7 +54,7 @@ func (idx *Index) clean() {
 func (idx Index) nIndex(n int) map[string][]int {
 	switch n {
 	case 1:
-		return idx.unigrams
+		return idx.unigramsOld
 	case 2:
 		return idx.bigrams
 	default:
@@ -95,14 +103,17 @@ func openJsonlFile(fileName string) (*os.File, *json.Decoder, error) {
 	return file, decoder, nil
 }
 
-func (idx Index) processRecordMetadata(movie *movies.Movie) {
-	idx.records[movie.ID] = &IndexRecordItem{
+func (idx *Index) processRecordMetadata(movie *movies.Movie, i int) {
+	recordItem := &IndexRecordItem{
 		Movie:          *movie,
 		bayesianRating: movie.BayesianRating(),
+		slot:           i,
 	}
+	idx.records[movie.ID] = recordItem
+	idx.recordBySlot = append(idx.recordBySlot, recordItem)
 }
 
-func (idx Index) processRecord(id int, normalizedName string, n int) {
+func (idx Index) processRecordMultigram(id int, normalizedName string, n int) {
 	index := idx.nIndex(n)
 	lastSeen := idx.lastSeenNIndex(n)
 
@@ -119,13 +130,39 @@ func (idx Index) processRecord(id int, normalizedName string, n int) {
 	}
 }
 
+func (idx *Index) processRecordUnigram(slot int, normalizedName string) {
+	for word := range strings.FieldsSeq(normalizedName) {
+		for i, _ := range word {
+			char := word[i]
+			isASCII := char < utf8.RuneSelf
+			if !isASCII {
+				continue
+			}
+
+			if exists := idx.unigrams[char]; exists == nil {
+				idx.unigrams[char] = sets.NewBitSet(maxRecords)
+			}
+			idx.unigrams[char].Set(slot)
+		}
+	}
+}
+
+func (idx *Index) processRecord(job indexJob, n int) {
+	if n == 1 {
+		idx.processRecordUnigram(job.slot, job.normalizedName)
+		idx.processRecordMultigram(job.id, job.normalizedName, 1) // TODO: remove
+	} else {
+		idx.processRecordMultigram(job.id, job.normalizedName, n)
+	}
+}
+
 func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 	index := Index{
-		unigrams:         make(map[string][]int),
+		unigramsOld:      make(map[string][]int), // TODO: remove
 		bigrams:          make(map[string][]int),
 		trigrams:         make(map[string][]int),
 		records:          make(map[int]*IndexRecordItem),
-		lastSeenUnigrams: make(map[string]int),
+		lastSeenUnigrams: make(map[string]int), // TODO: remove
 		lastSeenBigrams:  make(map[string]int),
 		lastSeenTrigrams: make(map[string]int),
 	}
@@ -140,7 +177,7 @@ func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 	for workerNum := 1; workerNum <= 3; workerNum++ {
 		wg.Go(func() {
 			for job := range jobs[workerNum-1] {
-				index.processRecord(job.id, job.normalizedName, workerNum)
+				index.processRecord(job, workerNum)
 			}
 		})
 	}
@@ -170,11 +207,28 @@ func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 			return Index{}, 0, err
 		}
 
-		index.processRecordMetadata(&movie)
+		if processedCount == maxRecords {
+			for _, jobChannel := range jobs {
+				close(jobChannel)
+			}
+			wg.Wait()
+			return Index{}, 0, fmt.Errorf("Maximum of %d records exceeded", maxRecords)
+		}
+
+		if _, exists := index.records[movie.ID]; exists {
+			for _, jobChannel := range jobs {
+				close(jobChannel)
+			}
+			wg.Wait()
+			return Index{}, 0, fmt.Errorf("Duplicate record with id %d", movie.ID)
+		}
+
+		index.processRecordMetadata(&movie, processedCount)
 
 		job := indexJob{
 			id:             movie.ID,
 			normalizedName: normalizeName(movie.PrimaryTitle),
+			slot:           processedCount,
 		}
 
 		for _, jobChannel := range jobs {
