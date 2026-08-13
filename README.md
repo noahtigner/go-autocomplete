@@ -1,29 +1,66 @@
-# Go Autocomplete
+# IMDb Autocomplete Engine in Go
 
-This project explores autocomplete and substring-search implementations in Go. The current dataset is derived from IMDb title metadata and ratings rather than a synthetic product catalog.
+A custom in-memory search engine built over approximately 12.7 million IMDb movie, television, and video titles.
 
-The active implementation builds a concurrent inverted n-gram index over approximately 12 million movie, television, and video titles. It supports multi-word, case-insensitive substring matching and returns a bounded set of full movie records ordered by a Bayesian rating score.
+The engine supports case-insensitive substring search across multiple query terms in any order using:
 
-## Progression
+- Bitmap indexes for single-character ASCII terms.
+- Inverted bigram and trigram posting lists.
+- Concurrent streaming index construction.
+- Candidate verification for exact substring semantics.
+- Bayesian ranking and bounded top-K selection.
 
-1. Character trie for prefix matching.
-2. Ordered trie traversal for deterministic results.
-3. Word-prefix matching at any position in a title.
-4. Concurrent word-prefix searches.
-5. Trigram trie for substring candidates.
-6. Concurrent trigram searches.
-7. Inverted index for word prefixes.
-8. Inverted trigram index.
-9. Inverted unigram, bigram, and trigram indexes.
-10. Concurrent inverted n-gram indexing with candidate verification and set intersection.
-11. IMDb ETL pipeline joining title basics with title ratings.
-12. JSONL output and streaming record ingestion.
-13. Three long-lived indexing workers with separate ownership for unigram bitmaps and bigram/trigram posting lists.
-14. Full movie-record retention by ID and Bayesian rating-based result ordering.
-15. Bounded top-K result selection with a fixed-size min-heap.
-16. The above, plus time & memory optimizations.
+The project started as a trie-based autocomplete exercise and evolved into an exploration of indexing, query execution, memory layout, concurrency, and performance engineering at real-world dataset scale. Its [design history](docs/design-history.md) documents that progression.
 
-Earlier implementations are preserved in Git history rather than in the working tree.
+```mermaid
+flowchart LR
+    A[IMDb TSV datasets] --> B[Streaming ETL]
+    B --> C[movies.jsonl]
+
+    C --> D[Index producer]
+
+    D --> E[Unigram worker]
+    D --> F[Bigram worker]
+    D --> G[Trigram worker]
+
+    E --> H[ASCII bitmaps]
+    F --> I[Bigram postings]
+    G --> J[Trigram postings]
+
+    H --> K[Query planner]
+    I --> K
+    J --> K
+
+    K --> L[Candidate verification]
+    L --> M[Bayesian ranking]
+    M --> N[Top-K min heap]
+```
+
+## Performance Highlights
+
+Measured on macOS 14.6.1 with Go 1.25.1 on an Apple M2 Max. The full-corpus run used the locally generated IMDb dataset and reports maximum resident set size from `/usr/bin/time -l`.
+
+| Measurement | Result |
+| --- | ---: |
+| Dataset | 12,699,818 IMDb titles |
+| Index build | 49.13 s |
+| Peak RSS | 3.84 GiB |
+| `Star Wars` search | 170 ms |
+| `Star Wars` matches | 8,179 |
+
+The ASCII bitmap unigram optimization reduced common-unigram latency by 89.83%, memory allocated per search by 99.97%, and allocations by 98.70% in the deterministic 100,000-record benchmark corpus. See the [benchmark record](docs/benchmarks/2026-08-bitmap-unigram-search.md) for methodology and tradeoffs.
+
+## Design Decisions
+
+| Decision | Why |
+| --- | --- |
+| Inverted n-gram index instead of a trie | Fixed-size grams are retrieved by exact key, so prefix-tree traversal adds complexity without improving the substring workload. |
+| Bitmap unigrams | Single-character postings are dense. Dense record slots let the engine intersect ASCII terms with word-level bit operations rather than allocating large candidate sets. |
+| Posting lists for bigrams and trigrams | Longer grams are less dense, making compact ID lists a better memory tradeoff than allocating a full bitmap per gram. |
+| Worker-owned indexes | Each n-gram worker exclusively owns its mutable index, avoiding concurrent map mutation and hot-path locks during construction. |
+| Candidate verification | Intersecting trigrams can admit false positives for longer query terms; verification restores exact substring semantics. |
+| Fixed-size min-heap | The engine keeps only the requested top results instead of sorting every match, while still reporting an exact match count. |
+| Streaming JSONL ingestion | Records are decoded and dispatched one at a time, avoiding retention of raw source data while the index is built. |
 
 ## Current Architecture
 
@@ -104,15 +141,7 @@ After generating `data/movies.jsonl`, provide a query as the first argument:
 go run . "Star Wars"
 ```
 
-The application builds the index, searches the query, prints up to ten results, and reports processing and search timings.
-
-Example output has the general form:
-
-```text
-Processed 12679821 records in 30.00s
-        Star Wars: Episode V - The Empire Strikes Back (1980) [votes -> score]
-Found 45 results in 0.10s
-```
+The application builds the index, searches the query, prints up to ten results, and reports processing and search timings. See [Performance Highlights](#performance-highlights) for a captured full-corpus measurement and environment.
 
 ## Testing
 
