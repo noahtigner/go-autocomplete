@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strconv"
@@ -12,7 +13,8 @@ import (
 func main() {
 	ioStart := time.Now()
 
-	args := os.Args[1:]
+	flag.Parse()
+	args := flag.Args()
 	if len(args) < 1 {
 		fmt.Println("Error: missing 1 positional argument for the search term")
 		os.Exit(1)

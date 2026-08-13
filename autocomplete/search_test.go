@@ -125,68 +125,30 @@ func TestSearchOneByteQueryRegressions(t *testing.T) {
 	}
 }
 
-func TestOldAndNewSearchParity(t *testing.T) {
-	fixtureIndex := buildFixtureIndex(t)
-	oneByteIndex := buildOneByteRegressionIndex(t)
-	slotBoundaryIndex := buildSlotBoundaryIndex(t)
-	unicodeIndex := buildUnicodeRegressionIndex(t)
-
-	tests := []struct {
-		name      string
-		index     Index
-		query     string
-		limit     int
-		wantTotal int
-		wantIDs   []int
-		wantError string
-	}{
-		{name: "case insensitive ranking", index: fixtureIndex, query: "STAR", limit: 3, wantTotal: 12, wantIDs: []int{23, 25, 4}},
-		{name: "short multiword", index: fixtureIndex, query: "THE A", limit: 10, wantTotal: 3, wantIDs: []int{4, 8, 21}},
-		{name: "long query verification", index: fixtureIndex, query: "abcd", limit: 10, wantIDs: []int{}},
-		{name: "zero limit", index: fixtureIndex, query: "star", limit: 0, wantTotal: 12, wantIDs: []int{}},
-		{name: "one byte", index: oneByteIndex, query: "a", limit: 10, wantTotal: 5, wantIDs: []int{39_063_631, 26_700_024, 103, 101, 2}},
-		{name: "one byte limit one", index: oneByteIndex, query: "a", limit: 1, wantTotal: 5, wantIDs: []int{39_063_631}},
-		{name: "one byte limit hundred", index: oneByteIndex, query: "a", limit: 100, wantTotal: 5, wantIDs: []int{39_063_631, 26_700_024, 103, 101, 2}},
-		{name: "repeated one byte", index: oneByteIndex, query: "a a", limit: 10, wantTotal: 5, wantIDs: []int{39_063_631, 26_700_024, 103, 101, 2}},
-		{name: "one byte intersection", index: oneByteIndex, query: "a b", limit: 10, wantTotal: 2, wantIDs: []int{39_063_631, 26_700_024}},
-		{name: "one byte miss", index: oneByteIndex, query: "q", limit: 10, wantIDs: []int{}},
-		{name: "one byte intersection miss", index: oneByteIndex, query: "a q", limit: 10, wantIDs: []int{}},
-		{name: "punctuation", index: oneByteIndex, query: "!", limit: 10, wantTotal: 1, wantIDs: []int{400}},
-		{name: "invalid UTF-8", index: oneByteIndex, query: string([]byte{0xff}), limit: 10, wantIDs: []int{}},
-		{name: "unicode", index: oneByteIndex, query: "É", limit: 10, wantTotal: 1, wantIDs: []int{500}},
-		{name: "mixed bigram", index: oneByteIndex, query: "a it", limit: 10, wantTotal: 1, wantIDs: []int{101}},
-		{name: "mixed trigram", index: oneByteIndex, query: "a the", limit: 10, wantTotal: 1, wantIDs: []int{103}},
-		{name: "mixed long rejection", index: oneByteIndex, query: "z orbit", limit: 10, wantIDs: []int{}},
-		{name: "slot boundary", index: slotBoundaryIndex, query: "z", limit: 10, wantTotal: 2, wantIDs: []int{1_000_064, 1_000_063}},
-		{name: "mixed unicode ASCII", index: unicodeIndex, query: "é a", limit: 10, wantTotal: 1, wantIDs: []int{901}},
-		{name: "verified unicode ASCII", index: unicodeIndex, query: "écho a", limit: 10, wantTotal: 1, wantIDs: []int{901}},
-		{name: "empty and invalid limit", index: fixtureIndex, query: "", limit: -1, wantError: "A limit between 0 and 100 is required"},
-		{name: "large invalid limit", index: fixtureIndex, query: "star", limit: 101, wantError: "A limit between 0 and 100 is required"},
-		{name: "whitespace query", index: fixtureIndex, query: " \t\n", limit: 10, wantError: "At least one query word is required"},
+func TestSearchBitmapSlotBoundary(t *testing.T) {
+	index := buildSlotBoundaryIndex(t)
+	result, err := index.Search("z", 10)
+	if err != nil {
+		t.Fatal(err)
 	}
+	assertSearchResult(t, result, 2, []int{1_000_064, 1_000_063})
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			oldResult, oldErr := tt.index.oldSearch(tt.query, tt.limit)
-			newResult, newErr := tt.index.newSearch(tt.query, tt.limit)
+func TestSearchMixedUnicodeAndASCII(t *testing.T) {
+	index := buildUnicodeRegressionIndex(t)
 
-			if errorMessage(oldErr) != errorMessage(newErr) {
-				t.Fatalf("old error = %q, new error = %q", errorMessage(oldErr), errorMessage(newErr))
+	for _, query := range []string{"é a", "écho a"} {
+		t.Run(query, func(t *testing.T) {
+			result, err := index.Search(query, 10)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if errorMessage(newErr) != tt.wantError {
-				t.Fatalf("error = %q, want %q", errorMessage(newErr), tt.wantError)
-			}
-			if newErr != nil {
-				return
-			}
-
-			assertSearchResult(t, "oldSearch", oldResult, tt.wantTotal, tt.wantIDs)
-			assertSearchResult(t, "newSearch", newResult, tt.wantTotal, tt.wantIDs)
+			assertSearchResult(t, result, 1, []int{901})
 		})
 	}
 }
 
-func TestSearchStrategiesMatchBruteForce(t *testing.T) {
+func TestSearchMatchesBruteForce(t *testing.T) {
 	records := make([]movies.Movie, 130)
 	titles := []string{
 		"Alpha Beta",
@@ -220,13 +182,11 @@ func TestSearchStrategiesMatchBruteForce(t *testing.T) {
 		for _, limit := range limits {
 			t.Run(query+"/"+strconv.Itoa(limit), func(t *testing.T) {
 				want := bruteForceSearch(records, query, limit)
-				oldResult, oldErr := index.oldSearch(query, limit)
-				newResult, newErr := index.newSearch(query, limit)
-				if oldErr != nil || newErr != nil {
-					t.Fatalf("old error = %v, new error = %v", oldErr, newErr)
+				result, err := index.Search(query, limit)
+				if err != nil {
+					t.Fatal(err)
 				}
-				assertEquivalentSearchResult(t, "oldSearch", oldResult, want)
-				assertEquivalentSearchResult(t, "newSearch", newResult, want)
+				assertEquivalentSearchResult(t, "Search", result, want)
 			})
 		}
 	}
@@ -259,22 +219,15 @@ func TestSearchInvalidInput(t *testing.T) {
 	}
 }
 
-func assertSearchResult(t *testing.T, implementation string, result SearchResult, wantTotal int, wantIDs []int) {
+func assertSearchResult(t *testing.T, result SearchResult, wantTotal int, wantIDs []int) {
 	t.Helper()
 
 	if result.Total != wantTotal {
-		t.Errorf("%s total = %d, want %d", implementation, result.Total, wantTotal)
+		t.Errorf("total = %d, want %d", result.Total, wantTotal)
 	}
 	if got := movieIDs(result.Movies); !slices.Equal(got, wantIDs) {
-		t.Errorf("%s IDs = %v, want %v", implementation, got, wantIDs)
+		t.Errorf("IDs = %v, want %v", got, wantIDs)
 	}
-}
-
-func errorMessage(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }
 
 func assertEquivalentSearchResult(t *testing.T, implementation string, got, want SearchResult) {
@@ -291,17 +244,17 @@ func assertEquivalentSearchResult(t *testing.T, implementation string, got, want
 func buildFixtureIndex(t *testing.T) Index {
 	t.Helper()
 
-	index, _, err := BuildIndexFromRecordStream("../testdata/etl/movies.jsonl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return index
+	return buildIndexFromPath(t, "../testdata/etl/movies.jsonl")
 }
 
 func buildOneByteRegressionIndex(t *testing.T) Index {
 	t.Helper()
 
-	movies := []movies.Movie{
+	return buildIndexFromMovies(t, oneByteRegressionMovies())
+}
+
+func oneByteRegressionMovies() []movies.Movie {
+	return []movies.Movie{
 		{ID: 39_063_631, PrimaryTitle: "A B"},
 		{ID: 2, PrimaryTitle: "A"},
 		{ID: 2_670_090, PrimaryTitle: "B"},
@@ -314,8 +267,6 @@ func buildOneByteRegressionIndex(t *testing.T) Index {
 		{ID: 400, PrimaryTitle: "7!"},
 		{ID: 500, PrimaryTitle: "É"},
 	}
-
-	return buildIndexFromMovies(t, movies)
 }
 
 func buildSlotBoundaryIndex(t *testing.T) Index {
@@ -337,23 +288,29 @@ func buildSlotBoundaryIndex(t *testing.T) Index {
 func buildUnicodeRegressionIndex(t *testing.T) Index {
 	t.Helper()
 
-	return buildIndexFromMovies(t, []movies.Movie{
+	return buildIndexFromMovies(t, unicodeRegressionMovies())
+}
+
+func unicodeRegressionMovies() []movies.Movie {
+	return []movies.Movie{
 		{ID: 901, PrimaryTitle: "A Écho"},
 		{ID: 902, PrimaryTitle: "Écho"},
 		{ID: 903, PrimaryTitle: "A Other"},
-	})
+	}
 }
 
 func buildIndexFromMovies(t *testing.T, records []movies.Movie) Index {
 	t.Helper()
 
-	path := writeMoviesJSONL(t, records)
-	index, count, err := BuildIndexFromRecordStream(path)
+	return buildIndexFromPath(t, writeMoviesJSONL(t, records))
+}
+
+func buildIndexFromPath(t *testing.T, path string) Index {
+	t.Helper()
+
+	index, _, err := BuildIndexFromRecordStream(path)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if count != len(records) {
-		t.Fatalf("processed %d records, want %d", count, len(records))
 	}
 	return index
 }

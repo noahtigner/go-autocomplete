@@ -30,15 +30,13 @@ type indexJob struct {
 }
 
 type Index struct {
-	unigramsOld map[string][]int // TODO: remove
-	unigrams    [utf8.RuneSelf]*sets.BitSet
-	bigrams     map[string][]int
-	trigrams    map[string][]int
+	unigrams [utf8.RuneSelf]*sets.BitSet
+	bigrams  map[string][]int
+	trigrams map[string][]int
 
 	records      map[int]*IndexRecordItem
 	recordBySlot []*IndexRecordItem
 
-	lastSeenUnigrams map[string]int // TODO: remove
 	lastSeenBigrams  map[string]int
 	lastSeenTrigrams map[string]int
 }
@@ -46,31 +44,22 @@ type Index struct {
 var maxRecords = 13_000_000
 
 func (idx *Index) clean() {
-	idx.lastSeenUnigrams = nil
 	idx.lastSeenBigrams = nil
 	idx.lastSeenTrigrams = nil
 }
 
-func (idx Index) nIndex(n int) map[string][]int {
-	switch n {
-	case 1:
-		return idx.unigramsOld
-	case 2:
+func (idx Index) multigramIndex(n int) map[string][]int {
+	if n == 2 {
 		return idx.bigrams
-	default:
-		return idx.trigrams
 	}
+	return idx.trigrams
 }
 
-func (idx Index) lastSeenNIndex(n int) map[string]int {
-	switch n {
-	case 1:
-		return idx.lastSeenUnigrams
-	case 2:
+func (idx Index) lastSeenMultigramIndex(n int) map[string]int {
+	if n == 2 {
 		return idx.lastSeenBigrams
-	default:
-		return idx.lastSeenTrigrams
 	}
+	return idx.lastSeenTrigrams
 }
 
 func getNGrams(word string, n int) []string {
@@ -114,8 +103,8 @@ func (idx *Index) processRecordMetadata(movie *movies.Movie, i int) {
 }
 
 func (idx Index) processRecordMultigram(id int, normalizedName string, n int) {
-	index := idx.nIndex(n)
-	lastSeen := idx.lastSeenNIndex(n)
+	index := idx.multigramIndex(n)
+	lastSeen := idx.lastSeenMultigramIndex(n)
 
 	for word := range strings.FieldsSeq(normalizedName) {
 		for _, gram := range getNGrams(word, n) {
@@ -150,19 +139,16 @@ func (idx *Index) processRecordUnigram(slot int, normalizedName string) {
 func (idx *Index) processRecord(job indexJob, n int) {
 	if n == 1 {
 		idx.processRecordUnigram(job.slot, job.normalizedName)
-		idx.processRecordMultigram(job.id, job.normalizedName, 1) // TODO: remove
-	} else {
-		idx.processRecordMultigram(job.id, job.normalizedName, n)
+		return
 	}
+	idx.processRecordMultigram(job.id, job.normalizedName, n)
 }
 
 func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 	index := Index{
-		unigramsOld:      make(map[string][]int), // TODO: remove
 		bigrams:          make(map[string][]int),
 		trigrams:         make(map[string][]int),
 		records:          make(map[int]*IndexRecordItem),
-		lastSeenUnigrams: make(map[string]int), // TODO: remove
 		lastSeenBigrams:  make(map[string]int),
 		lastSeenTrigrams: make(map[string]int),
 	}

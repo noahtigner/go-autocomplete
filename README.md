@@ -18,7 +18,7 @@ The active implementation builds a concurrent inverted n-gram index over approxi
 10. Concurrent inverted n-gram indexing with candidate verification and set intersection.
 11. IMDb ETL pipeline joining title basics with title ratings.
 12. JSONL output and streaming record ingestion.
-13. Three long-lived indexing workers with separate map ownership for unigrams, bigrams, and trigrams.
+13. Three long-lived indexing workers with separate ownership for unigram bitmaps and bigram/trigram posting lists.
 14. Full movie-record retention by ID and Bayesian rating-based result ordering.
 15. Bounded top-K result selection with a fixed-size min-heap.
 16. The above, plus time & memory optimizations.
@@ -46,17 +46,13 @@ The application reads `data/movies.jsonl` one record at a time. A producer:
 - Normalizes its primary title.
 - Sends a small indexing job to each n-gram worker.
 
-The three workers own separate maps:
-
-- Unigram postings and deduplication state.
-- Bigram postings and deduplication state.
-- Trigram postings and deduplication state.
+Worker 1 builds one bitmap for each ASCII byte. Each bit is addressed by a dense record slot, allowing one-character query terms to be intersected efficiently with bitwise operations. Workers 2 and 3 build deduplicated inverted posting lists for byte bigrams and trigrams, keyed by raw movie ID.
 
 This avoids concurrent map writes without putting locks on the indexing hot path.
 
 ### Search
 
-Search uses n-gram postings to retrieve candidates, then verifies every query word with case-insensitive substring matching. Query words may appear in any order.
+ASCII one-character query terms use bitmap intersection directly. Two- and three-byte terms use bigram and trigram posting lists; longer terms intersect their trigrams to retrieve candidates, then verify the complete term with case-insensitive substring matching. Mixed queries first retrieve multigram candidates and filter them through the relevant unigram bitmaps. Query words may appear in any order.
 
 Search returns a `SearchResult` containing the total number of matching records and up to the requested number of full `models.Movie` values. Results are selected with a fixed-size min-heap and sorted by the Bayesian rating score precomputed during indexing. Movie ID is used as the descending tie-breaker. Empty queries and negative limits return an error.
 
@@ -154,38 +150,7 @@ go tool cover -html=/tmp/go-autocomplete.cover
 
 #### Benchmarks
 
-Run
-
-```bash
-go test -run '^$' -bench='BenchmarkBuildIndex100K$' -benchmem -benchtime=1x -count=5 ./autocomplete 
-```
-
-or
-
-```bash
-go test -run '^$' -bench='BenchmarkSearchIndex100K$' -benchmem -benchtime=1x -count=5 ./autocomplete
-```
-
-or
-
-```bash
-go test -run '^$' -bench='BenchmarkSearchIndex100K/common-unigram' -benchtime=10s -cpuprofile=/tmp/unigram.cpu -memprofile=/tmp/unigram.mem ./autocomplete
-go tool pprof -top /tmp/unigram.cpu\ngo tool pprof -top -alloc_space /tmp/unigram.mem
-```
-
-Run A/B benchmark comparisons with:
-
-```bash
-go test -run '^$' -bench '^BenchmarkSearchIndex100K$' -benchmem -benchtime=1s -count=10 ./autocomplete > .data/bench-old.txt
-
-# Apply the changes
-
-go test -run '^$' -bench '^BenchmarkSearchIndex100K$' -benchmem -benchtime=1s -count=10 ./autocomplete > .data/bench-new.txt
-
-# Compare the results
-
-go run golang.org/x/perf/cmd/benchstat@latest .data/bench-old.txt .data/bench-new.txt
-```
+Benchmark collection instructions and historical optimization records are in [docs/benchmarks](docs/benchmarks/README.md). The first record documents the [bitmap unigram optimization](docs/benchmarks/2026-08-bitmap-unigram-search.md).
 
 ## Known Limitations
 

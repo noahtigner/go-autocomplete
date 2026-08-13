@@ -20,7 +20,7 @@ func retrieveSearchCandidateIds(reverseIndex Index, queryWords []string) sets.Se
 	for i, word := range queryWords {
 		var gramSets []sets.Set[int]
 		grams := sets.Unique(gramsForQueryWord(word))
-		index := reverseIndex.nIndex(len(word))
+		index := reverseIndex.multigramIndex(len(word))
 
 		for _, gram := range grams {
 			gramSet := sets.NewSet[int]()
@@ -56,43 +56,6 @@ func queryWordsRequireVerification(queryWords []string) bool {
 		}
 	}
 	return false
-}
-
-func (reverseIndex Index) oldSearch(query string, limit int) (SearchResult, error) {
-	if limit < 0 || limit > 100 {
-		return SearchResult{}, fmt.Errorf("A limit between 0 and 100 is required")
-	}
-
-	normalizedQuery := strings.ToLower(query)
-	queryWords := strings.Fields(normalizedQuery)
-
-	if len(queryWords) == 0 {
-		return SearchResult{}, fmt.Errorf("At least one query word is required")
-	}
-
-	candidateIds := retrieveSearchCandidateIds(reverseIndex, queryWords)
-	requiresVerification := queryWordsRequireVerification(queryWords)
-
-	totalMatches := 0
-	topResults := newMovieHeap(limit)
-
-	for candidateId := range candidateIds {
-		record := reverseIndex.records[candidateId]
-
-		if requiresVerification && !matchesAllQueryWords(record.PrimaryTitle, queryWords) {
-			continue
-		}
-
-		totalMatches += 1
-		topResults.add(record)
-	}
-
-	heapResults := topResults.topKResults()
-
-	return SearchResult{
-		Total:  totalMatches,
-		Movies: heapResults,
-	}, nil
 }
 
 func (reverseIndex *Index) searchAllQueryWordsUnigrams(queryWords []string, limit int) SearchResult {
@@ -187,7 +150,7 @@ func (reverseIndex *Index) searchAllQueryWordsMultigrams(lookupWords []string, s
 	}
 }
 
-func (reverseIndex *Index) newSearch(query string, limit int) (SearchResult, error) {
+func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) {
 	if limit < 0 || limit > 100 {
 		return SearchResult{}, fmt.Errorf("A limit between 0 and 100 is required")
 	}
@@ -215,13 +178,4 @@ func (reverseIndex *Index) newSearch(query string, limit int) (SearchResult, err
 		return reverseIndex.searchAllQueryWordsUnigrams(queryWords, limit), nil
 	}
 	return reverseIndex.searchAllQueryWordsMultigrams(lookupWords, singleCharWords, limit), nil
-
-}
-
-func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) {
-	useNew := true
-	if useNew {
-		return reverseIndex.newSearch(query, limit)
-	}
-	return reverseIndex.oldSearch(query, limit)
 }

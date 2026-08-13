@@ -67,7 +67,7 @@ func TestBuildIndexFromRecordStream(t *testing.T) {
 			t.Fatalf("processed count = %d, want 31", count)
 		}
 
-		result, err := index.newSearch("moo", 10)
+		result, err := index.Search("moo", 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,7 +115,7 @@ func TestBuildIndexFromRecordStream(t *testing.T) {
 			t.Errorf("processed count = %d, want 0", count)
 		}
 
-		result, err := index.newSearch("a", 10)
+		result, err := index.Search("a", 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +159,7 @@ func TestBuildIndexRecordLimit(t *testing.T) {
 			t.Fatalf("processed count = %d, want %d", count, maxRecords)
 		}
 
-		result, err := index.newSearch("z", 10)
+		result, err := index.Search("z", 10)
 		if err != nil {
 			t.Fatal(err)
 		}
