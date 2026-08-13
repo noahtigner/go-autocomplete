@@ -54,7 +54,7 @@ This avoids concurrent map writes without putting locks on the indexing hot path
 
 ASCII one-character query terms use bitmap intersection directly. Two- and three-byte terms use bigram and trigram posting lists; longer terms intersect their trigrams to retrieve candidates, then verify the complete term with case-insensitive substring matching. Mixed queries first retrieve multigram candidates and filter them through the relevant unigram bitmaps. Query words may appear in any order.
 
-Search returns a `SearchResult` containing the total number of matching records and up to the requested number of full `models.Movie` values. Results are selected with a fixed-size min-heap and sorted by the Bayesian rating score precomputed during indexing. Movie ID is used as the descending tie-breaker. Empty queries and negative limits return an error.
+Search returns a `SearchResult` containing the total number of matching records and up to the requested number of full `models.Movie` values. Results are selected with a fixed-size min-heap and sorted by the Bayesian rating score precomputed during indexing. Movie ID is used as the descending tie-breaker. Empty queries and limits outside the range `0` through `100` return an error.
 
 The Bayesian score combines:
 
@@ -154,8 +154,10 @@ Benchmark collection instructions and historical optimization records are in [do
 
 ## Known Limitations
 
-- There is currently no minimum query-length requirement.
-- One- and two-character queries can produce very large candidate sets.
-- A precomputed cache of popular results for one- and two-character query words is planned.
-- Candidate retrieval still materializes n-gram candidate sets before top-K ranking.
-- Exact top-K ranking still verifies every candidate that survives n-gram retrieval.
+- Searches operate on `PrimaryTitle`; `OriginalTitle` is retained but not indexed.
+- Index construction is capped at 13,000,000 records.
+- The search limit must be between `0` and `100`; `0` returns only the match count.
+- There is no minimum query length. Common one-character ASCII queries can require scanning and ranking a large bitmap intersection, while two-character and longer queries can produce large posting-list candidate sets.
+- Bigram, trigram, and mixed queries materialize candidate ID sets before top-K ranking. Pure ASCII unigram queries stream bitmap intersections instead.
+- Exact match counts and ranking require scanning every candidate that survives index filtering. Full substring verification is additionally required for query words longer than three bytes.
+- Only ASCII one-byte query terms use bitmap intersections. Non-ASCII terms use the byte bigram/trigram path, so their performance characteristics differ.
