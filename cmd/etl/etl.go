@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,7 +27,43 @@ func (c gzipFileCloser) Close() (err error) {
 	return errors.Join(c.reader.Close(), c.file.Close())
 }
 
-func downloadData(client *http.Client, fileUrl string) (err error) {
+func writeAtomically(path string, write func(*os.File) error) (err error) {
+	tempFile, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
+	if err != nil {
+		return err
+	}
+
+	tempPath := tempFile.Name()
+	committed := false
+	closeAttempted := false
+	defer func() {
+		if !closeAttempted {
+			closeAttempted = true
+			err = errors.Join(err, tempFile.Close())
+		}
+		if !committed {
+			err = errors.Join(err, os.Remove(tempPath))
+		}
+	}()
+
+	if err := write(tempFile); err != nil {
+		return err
+	}
+
+	closeAttempted = true
+	if err := tempFile.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tempPath, path); err != nil {
+		return err
+	}
+
+	committed = true
+	return nil
+}
+
+func downloadData(client *http.Client, fileUrl string, outputDir string) error {
 	fileUrlParts := strings.Split(fileUrl, "/")
 	fileName := fileUrlParts[len(fileUrlParts)-1]
 
@@ -40,45 +77,10 @@ func downloadData(client *http.Client, fileUrl string) (err error) {
 		return fmt.Errorf("Received a non-200 response for %s: %s", fileUrl, resp.Status)
 	}
 
-	// Create a temporary file
-	tempFile, err := os.CreateTemp("./data", "."+fileName+"-*")
-	if err != nil {
+	return writeAtomically(filepath.Join(outputDir, fileName), func(tempFile *os.File) error {
+		_, err := io.Copy(tempFile, resp.Body)
 		return err
-	}
-
-	tempPath := tempFile.Name()
-	committed := false
-	closeAttempted := false
-
-	// Clean up the temporary file
-	defer func() {
-		if !closeAttempted {
-			err = errors.Join(err, tempFile.Close())
-		}
-		if !committed {
-			err = errors.Join(err, os.Remove(tempPath))
-		}
-	}()
-
-	// Copy contents into the temp file
-	if _, err := io.Copy(tempFile, resp.Body); err != nil {
-		return err
-	}
-
-	// Close the file so we can move it
-	closeAttempted = true
-	if err := tempFile.Close(); err != nil {
-		return err
-	}
-
-	// Rename the temp file to the intended final name, making this write atomic
-	if err := os.Rename(tempPath, "./data/"+fileName); err != nil {
-		return err
-	}
-
-	committed = true
-
-	return nil
+	})
 }
 
 func openGzipScanner(path string) (*bufio.Scanner, io.Closer, error) {
@@ -269,7 +271,46 @@ func mergeTitleData(titleScanner, ratingScanner *bufio.Scanner, encoder *json.En
 	return titleCount, ratedTitleCount, nil
 }
 
+type gzipScannerOpener func(string) (*bufio.Scanner, io.Closer, error)
+
+func mergeDownloadedDataWithOpener(output io.Writer, titlePath string, ratingPath string, openScanner gzipScannerOpener) (titleCount int, ratedTitleCount int, err error) {
+	titleScanner, titleCloser, err := openScanner(titlePath)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() {
+		err = errors.Join(err, titleCloser.Close())
+	}()
+
+	ratingScanner, ratingCloser, err := openScanner(ratingPath)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() {
+		err = errors.Join(err, ratingCloser.Close())
+	}()
+
+	return mergeTitleData(titleScanner, ratingScanner, json.NewEncoder(output))
+}
+
+func writeMoviesJSONL(outputPath string, titlePath string, ratingPath string) (titleCount int, ratedTitleCount int, err error) {
+	return writeMoviesJSONLWithOpener(outputPath, titlePath, ratingPath, openGzipScanner)
+}
+
+func writeMoviesJSONLWithOpener(outputPath string, titlePath string, ratingPath string, openScanner gzipScannerOpener) (titleCount int, ratedTitleCount int, err error) {
+	err = writeAtomically(outputPath, func(tempFile *os.File) error {
+		writer := bufio.NewWriter(tempFile)
+		titleCount, ratedTitleCount, err = mergeDownloadedDataWithOpener(writer, titlePath, ratingPath, openScanner)
+		if err != nil {
+			return err
+		}
+		return writer.Flush()
+	})
+	return titleCount, ratedTitleCount, err
+}
+
 func etl() (err error) {
+	dataDir := "./data"
 	dataSets := []string{
 		"https://datasets.imdbws.com/title.basics.tsv.gz",
 		"https://datasets.imdbws.com/title.ratings.tsv.gz",
@@ -283,7 +324,7 @@ func etl() (err error) {
 
 	for _, fileUrl := range dataSets {
 		dlWaitGroup.Go(func() {
-			if err := downloadData(client, fileUrl); err != nil {
+			if err := downloadData(client, fileUrl, dataDir); err != nil {
 				dlErrChan <- err
 			}
 		})
@@ -295,65 +336,14 @@ func etl() (err error) {
 		return err
 	}
 
-	// Create a temporary file
-	tempFile, err := os.CreateTemp("./data", ".movies.jsonl-*")
+	titleCount, ratedTitleCount, err := writeMoviesJSONL(
+		filepath.Join(dataDir, "movies.jsonl"),
+		filepath.Join(dataDir, "title.basics.tsv.gz"),
+		filepath.Join(dataDir, "title.ratings.tsv.gz"),
+	)
 	if err != nil {
 		return err
 	}
-
-	tempPath := tempFile.Name()
-	committed := false
-	closeAttempted := false
-
-	writer := bufio.NewWriter(tempFile)
-
-	// Clean up the temporary file
-	defer func() {
-		if !closeAttempted {
-			err = errors.Join(err, tempFile.Close())
-		}
-		if !committed {
-			err = errors.Join(err, os.Remove(tempPath))
-		}
-	}()
-
-	titleScanner, titleCloser, err := openGzipScanner("./data/title.basics.tsv.gz")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = errors.Join(err, titleCloser.Close())
-	}()
-
-	ratingScanner, ratingCloser, err := openGzipScanner("./data/title.ratings.tsv.gz")
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = errors.Join(err, ratingCloser.Close())
-	}()
-
-	titleCount, ratedTitleCount, err := mergeTitleData(titleScanner, ratingScanner, json.NewEncoder(writer))
-	if err != nil {
-		return err
-	}
-
-	if err := writer.Flush(); err != nil {
-		return err
-	}
-
-	// Close the file so we can move it
-	closeAttempted = true
-	if err := tempFile.Close(); err != nil {
-		return err
-	}
-
-	// Rename the temp file to the intended final name, making this write atomic
-	if err := os.Rename(tempPath, "./data/movies.jsonl"); err != nil {
-		return err
-	}
-
-	committed = true
 
 	fmt.Printf("Processed %d titles, %d with ratings\n", titleCount, ratedTitleCount)
 	return nil
