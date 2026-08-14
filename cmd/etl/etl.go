@@ -40,19 +40,43 @@ func downloadData(client *http.Client, fileUrl string) (err error) {
 		return fmt.Errorf("Received a non-200 response for %s: %s", fileUrl, resp.Status)
 	}
 
-	out, err := os.Create("./data/" + fileName)
+	// Create a temporary file
+	tempFile, err := os.CreateTemp("./data", "."+fileName+"-*")
 	if err != nil {
 		return err
 	}
+
+	tempPath := tempFile.Name()
+	committed := false
+	closeAttempted := false
+
+	// Clean up the temporary file
 	defer func() {
-		if closeErr := out.Close(); closeErr != nil {
-			err = errors.Join(err, closeErr)
+		if !closeAttempted {
+			err = errors.Join(err, tempFile.Close())
+		}
+		if !committed {
+			err = errors.Join(err, os.Remove(tempPath))
 		}
 	}()
 
-	if _, err := io.Copy(out, resp.Body); err != nil {
+	// Copy contents into the temp file
+	if _, err := io.Copy(tempFile, resp.Body); err != nil {
 		return err
 	}
+
+	// Close the file so we can move it
+	closeAttempted = true
+	if err := tempFile.Close(); err != nil {
+		return err
+	}
+
+	// Rename the temp file to the intended final name, making this write atomic
+	if err := os.Rename(tempPath, "./data/"+fileName); err != nil {
+		return err
+	}
+
+	committed = true
 
 	return nil
 }
@@ -271,15 +295,26 @@ func etl() (err error) {
 		return err
 	}
 
-	output, err := os.Create("./data/movies.jsonl")
+	// Create a temporary file
+	tempFile, err := os.CreateTemp("./data", ".movies.jsonl-*")
 	if err != nil {
 		return err
 	}
 
-	writer := bufio.NewWriter(output)
+	tempPath := tempFile.Name()
+	committed := false
+	closeAttempted := false
 
+	writer := bufio.NewWriter(tempFile)
+
+	// Clean up the temporary file
 	defer func() {
-		err = errors.Join(err, writer.Flush(), output.Close())
+		if !closeAttempted {
+			err = errors.Join(err, tempFile.Close())
+		}
+		if !committed {
+			err = errors.Join(err, os.Remove(tempPath))
+		}
 	}()
 
 	titleScanner, titleCloser, err := openGzipScanner("./data/title.basics.tsv.gz")
@@ -302,6 +337,23 @@ func etl() (err error) {
 	if err != nil {
 		return err
 	}
+
+	if err := writer.Flush(); err != nil {
+		return err
+	}
+
+	// Close the file so we can move it
+	closeAttempted = true
+	if err := tempFile.Close(); err != nil {
+		return err
+	}
+
+	// Rename the temp file to the intended final name, making this write atomic
+	if err := os.Rename(tempPath, "./data/movies.jsonl"); err != nil {
+		return err
+	}
+
+	committed = true
 
 	fmt.Printf("Processed %d titles, %d with ratings\n", titleCount, ratedTitleCount)
 	return nil
