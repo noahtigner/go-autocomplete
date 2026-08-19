@@ -20,8 +20,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	query := args[0]
-	if len(query) == 0 {
+	query, err := autocomplete.ParseQuery(args[0])
+	if err != nil {
 		fmt.Println("Error: the first positional argument must be a nonempty search term")
 		os.Exit(1)
 	}
