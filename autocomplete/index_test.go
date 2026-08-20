@@ -67,10 +67,7 @@ func TestBuildIndexFromRecordStream(t *testing.T) {
 			t.Fatalf("processed count = %d, want 31", count)
 		}
 
-		result, err := index.Search("moo", 10)
-		if err != nil {
-			t.Fatal(err)
-		}
+		result := index.Search(mustParseSearchParams(t, "moo", 10))
 		if result.Total != 1 || !slices.Equal(movieIDs(result.Movies), []int{26}) {
 			t.Errorf("Search(\"moo\") = %+v, want movie 26", result)
 		}
@@ -115,10 +112,7 @@ func TestBuildIndexFromRecordStream(t *testing.T) {
 			t.Errorf("processed count = %d, want 0", count)
 		}
 
-		result, err := index.Search("a", 10)
-		if err != nil {
-			t.Fatal(err)
-		}
+		result := index.Search(mustParseSearchParams(t, "a", 10))
 		if result.Total != 0 || len(result.Movies) != 0 {
 			t.Errorf("Search(\"a\") = %+v, want no matches", result)
 		}
@@ -159,10 +153,7 @@ func TestBuildIndexRecordLimit(t *testing.T) {
 			t.Fatalf("processed count = %d, want %d", count, maxRecords)
 		}
 
-		result, err := index.Search("z", 10)
-		if err != nil {
-			t.Fatal(err)
-		}
+		result := index.Search(mustParseSearchParams(t, "z", 10))
 		if result.Total != 1 || !slices.Equal(movieIDs(result.Movies), []int{2}) {
 			t.Errorf("Search(\"z\") = %+v, want movie 2", result)
 		}

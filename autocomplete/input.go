@@ -6,20 +6,39 @@ import (
 	"unicode/utf8"
 )
 
-func ParseQuery(query string) (string, error) {
-	if len(query) > 64 {
-		return "", fmt.Errorf("Query must not exceed 64 characters")
+type RawSearchParams struct {
+	Term  string
+	Limit *int
+}
+
+func ParseQuery(query RawSearchParams) (SearchParams, error) {
+	limit := 10
+	if query.Limit != nil {
+		if *query.Limit < 0 || *query.Limit > 100 {
+			return SearchParams{}, fmt.Errorf("Limit must be be in the range [0, 100]")
+		}
+		limit = *query.Limit
 	}
 
-	trimmedQuery := strings.TrimSpace(query)
+	if len(query.Term) > 64 {
+		return SearchParams{}, fmt.Errorf("Query must not exceed 64 bytes")
+	}
+
+	trimmedQuery := strings.TrimSpace(query.Term)
 
 	if len(trimmedQuery) == 0 {
-		return "", fmt.Errorf("Query must not be empty or blank")
+		return SearchParams{}, fmt.Errorf("Query must not be empty or blank")
 	}
 
 	if !utf8.ValidString(trimmedQuery) {
-		return "", fmt.Errorf("Query string must only contain valid UTF-8 characters")
+		return SearchParams{}, fmt.Errorf("Query string must only contain valid UTF-8 characters")
 	}
 
-	return strings.ToLower(trimmedQuery), nil
+	normalizedString := strings.ToLower(trimmedQuery)
+
+	return SearchParams{
+		normalizedQuery:      normalizedString,
+		normalizedQuerySlice: strings.Fields(normalizedString),
+		limit:                limit,
+	}, nil
 }

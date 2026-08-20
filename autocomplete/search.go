@@ -1,13 +1,18 @@
 package autocomplete
 
 import (
-	"fmt"
 	"strings"
 	"unicode/utf8"
 
 	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 	sets "github.com/noahtigner/go-autocomplete/internal/sets"
 )
+
+type SearchParams struct {
+	normalizedQuery      string
+	normalizedQuerySlice []string
+	limit                int
+}
 
 type SearchResult struct {
 	Total  int
@@ -150,21 +155,13 @@ func (reverseIndex *Index) searchAllQueryWordsMultigrams(lookupWords []string, s
 	}
 }
 
-func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) {
-	if limit < 0 || limit > 100 {
-		return SearchResult{}, fmt.Errorf("A limit between 0 and 100 is required")
-	}
+func (reverseIndex Index) Search(query SearchParams) SearchResult {
+	wordCount := len(query.normalizedQuerySlice)
 
-	queryWords := strings.Fields(query)
-
-	if len(queryWords) == 0 {
-		return SearchResult{}, fmt.Errorf("At least one query word is required")
-	}
-
-	lookupWords := make([]string, 0, len(queryWords))
-	singleCharWords := make([]string, 0, len(queryWords))
+	lookupWords := make([]string, 0, wordCount)
+	singleCharWords := make([]string, 0, wordCount)
 	hasNonUnigram := false
-	for _, word := range queryWords {
+	for _, word := range query.normalizedQuerySlice {
 		if len(word) != 1 || word[0] >= utf8.RuneSelf {
 			lookupWords = append(lookupWords, word)
 			hasNonUnigram = true
@@ -174,7 +171,7 @@ func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) 
 	}
 
 	if !hasNonUnigram {
-		return reverseIndex.searchAllQueryWordsUnigrams(queryWords, limit), nil
+		return reverseIndex.searchAllQueryWordsUnigrams(query.normalizedQuerySlice, query.limit)
 	}
-	return reverseIndex.searchAllQueryWordsMultigrams(lookupWords, singleCharWords, limit), nil
+	return reverseIndex.searchAllQueryWordsMultigrams(lookupWords, singleCharWords, query.limit)
 }

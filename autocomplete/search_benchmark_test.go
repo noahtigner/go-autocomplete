@@ -46,12 +46,13 @@ func BenchmarkSearchIndex100K(b *testing.B) {
 		{name: "long-query-zero-limit", query: "the", limit: 0, wantTotal: 20_000},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
-			result, err := index.Search(tt.query, tt.limit)
-			assertBenchmarkSearchResult(b, tt, result, err)
+			query := mustParseSearchParams(b, tt.query, tt.limit)
+			result := index.Search(query)
+			assertBenchmarkSearchResult(b, tt, result)
 
 			b.ReportAllocs()
 			for b.Loop() {
-				_, _ = index.Search(tt.query, tt.limit)
+				_ = index.Search(query)
 			}
 		})
 	}
@@ -59,6 +60,7 @@ func BenchmarkSearchIndex100K(b *testing.B) {
 
 func BenchmarkEndToEndSearch100K(b *testing.B) {
 	path, _ := writeBenchmarkJSONL(b, 100_000)
+	query := mustParseSearchParams(b, "E EPISODE", 10)
 
 	b.ReportAllocs()
 	for b.Loop() {
@@ -69,22 +71,16 @@ func BenchmarkEndToEndSearch100K(b *testing.B) {
 		if count != 100_000 {
 			b.Fatalf("processed %d records, want 100000", count)
 		}
-		result, err := index.Search("E EPISODE", 10)
-		if err != nil {
-			b.Fatal(err)
-		}
+		result := index.Search(query)
 		if result.Total != 20_000 || len(result.Movies) != 10 {
 			b.Fatalf("Search(\"E EPISODE\") = %+v, want 20000 matches and 10 movies", result)
 		}
 	}
 }
 
-func assertBenchmarkSearchResult(b *testing.B, tt searchBenchmarkCase, result SearchResult, err error) {
+func assertBenchmarkSearchResult(b *testing.B, tt searchBenchmarkCase, result SearchResult) {
 	b.Helper()
 
-	if err != nil {
-		b.Fatal(err)
-	}
 	if result.Total != tt.wantTotal {
 		b.Fatalf("Search(%q) total = %d, want %d", tt.query, result.Total, tt.wantTotal)
 	}

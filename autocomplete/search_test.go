@@ -35,10 +35,7 @@ func TestSearch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := index.Search(tt.query, tt.limit)
-			if err != nil {
-				t.Fatal(err)
-			}
+			got := index.Search(mustParseSearchParams(t, tt.query, tt.limit))
 			if got.Total != tt.wantTotal {
 				t.Errorf("Search(%q, %d) total = %d, want %d", tt.query, tt.limit, got.Total, tt.wantTotal)
 			}
@@ -102,7 +99,6 @@ func TestSearchOneByteQueryRegressions(t *testing.T) {
 		{name: "character intersection", query: "a b", limit: 10, wantTotal: 2, wantIDs: []int{39_063_631, 26_700_024}},
 		{name: "digit", query: "7", limit: 10, wantTotal: 1, wantIDs: []int{400}},
 		{name: "punctuation", query: "!", limit: 10, wantTotal: 1, wantIDs: []int{400}},
-		{name: "invalid UTF-8", query: string([]byte{0xff}), limit: 10, wantTotal: 0, wantIDs: []int{}},
 		{name: "two byte rune", query: "É", limit: 10, wantTotal: 1, wantIDs: []int{500}},
 		{name: "character and bigram", query: "a it", limit: 10, wantTotal: 1, wantIDs: []int{101}},
 		{name: "character and trigram", query: "a the", limit: 10, wantTotal: 1, wantIDs: []int{103}},
@@ -111,10 +107,7 @@ func TestSearchOneByteQueryRegressions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := index.Search(tt.query, tt.limit)
-			if err != nil {
-				t.Fatal(err)
-			}
+			got := index.Search(mustParseSearchParams(t, tt.query, tt.limit))
 			if got.Total != tt.wantTotal {
 				t.Errorf("Search(%q, %d) total = %d, want %d", tt.query, tt.limit, got.Total, tt.wantTotal)
 			}
@@ -127,10 +120,7 @@ func TestSearchOneByteQueryRegressions(t *testing.T) {
 
 func TestSearchBitmapSlotBoundary(t *testing.T) {
 	index := buildSlotBoundaryIndex(t)
-	result, err := index.Search("z", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
+	result := index.Search(mustParseSearchParams(t, "z", 10))
 	assertSearchResult(t, result, 2, []int{1_000_064, 1_000_063})
 }
 
@@ -139,10 +129,7 @@ func TestSearchMixedUnicodeAndASCII(t *testing.T) {
 
 	for _, query := range []string{"é a", "écho a"} {
 		t.Run(query, func(t *testing.T) {
-			result, err := index.Search(query, 10)
-			if err != nil {
-				t.Fatal(err)
-			}
+			result := index.Search(mustParseSearchParams(t, query, 10))
 			assertSearchResult(t, result, 1, []int{901})
 		})
 	}
@@ -182,40 +169,10 @@ func TestSearchMatchesBruteForce(t *testing.T) {
 		for _, limit := range limits {
 			t.Run(query+"/"+strconv.Itoa(limit), func(t *testing.T) {
 				want := bruteForceSearch(records, query, limit)
-				result, err := index.Search(query, limit)
-				if err != nil {
-					t.Fatal(err)
-				}
+				result := index.Search(mustParseSearchParams(t, query, limit))
 				assertEquivalentSearchResult(t, "Search", result, want)
 			})
 		}
-	}
-}
-
-func TestSearchInvalidInput(t *testing.T) {
-	index := buildFixtureIndex(t)
-
-	tests := []struct {
-		name  string
-		query string
-		limit int
-	}{
-		{name: "empty query", query: "", limit: 10},
-		{name: "whitespace-only query", query: " \t\n", limit: 10},
-		{name: "negative limit", query: "star", limit: -1},
-		{name: "excessively large limit", query: "star", limit: 101},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := index.Search(tt.query, tt.limit)
-			if err == nil {
-				t.Fatalf("Search(%q, %d) returned nil error", tt.query, tt.limit)
-			}
-			if got.Total != 0 || got.Movies != nil {
-				t.Errorf("Search(%q, %d) result = %+v, want a zero-value result", tt.query, tt.limit, got)
-			}
-		})
 	}
 }
 
@@ -239,6 +196,16 @@ func assertEquivalentSearchResult(t *testing.T, implementation string, got, want
 	if gotIDs, wantIDs := movieIDs(got.Movies), movieIDs(want.Movies); !slices.Equal(gotIDs, wantIDs) {
 		t.Errorf("%s IDs = %v, want %v", implementation, gotIDs, wantIDs)
 	}
+}
+
+func mustParseSearchParams(t testing.TB, term string, limit int) SearchParams {
+	t.Helper()
+
+	params, err := ParseQuery(RawSearchParams{Term: term, Limit: &limit})
+	if err != nil {
+		t.Fatalf("ParseQuery(%q, %d): %v", term, limit, err)
+	}
+	return params
 }
 
 func buildFixtureIndex(t *testing.T) Index {

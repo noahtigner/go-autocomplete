@@ -20,9 +20,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	query, err := autocomplete.ParseQuery(args[0])
+	query, err := autocomplete.ParseQuery(autocomplete.RawSearchParams{Term: args[0], Limit: nil})
 	if err != nil {
-		fmt.Println("Error: the first positional argument must be a nonempty search term")
+		fmt.Println(err)
 		os.Exit(1)
 	}
 
@@ -37,11 +37,7 @@ func main() {
 
 	searchStart := time.Now()
 
-	results, err := index.Search(query, 10)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	results := index.Search(query)
 
 	searchDuration := time.Since(searchStart)
 
