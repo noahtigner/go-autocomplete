@@ -21,5 +21,5 @@ func ParseQuery(query string) (string, error) {
 		return "", fmt.Errorf("Query string must only contain valid UTF-8 characters")
 	}
 
-	return trimmedQuery, nil
+	return strings.ToLower(trimmedQuery), nil
 }

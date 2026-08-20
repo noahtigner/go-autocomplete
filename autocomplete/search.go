@@ -155,8 +155,7 @@ func (reverseIndex Index) Search(query string, limit int) (SearchResult, error) 
 		return SearchResult{}, fmt.Errorf("A limit between 0 and 100 is required")
 	}
 
-	normalizedQuery := strings.ToLower(query)
-	queryWords := strings.Fields(normalizedQuery)
+	queryWords := strings.Fields(query)
 
 	if len(queryWords) == 0 {
 		return SearchResult{}, fmt.Errorf("At least one query word is required")

@@ -12,12 +12,12 @@ func TestParseQuery(t *testing.T) {
 		wantStr  string
 		wantErr  bool
 	}{
-		{"Valid word", "Star", "Star", false},
-		{"Valid words", "Star Wars", "Star Wars", false},
-		{"Valid words with leading whitespace", " Star Wars", "Star Wars", false},
-		{"Valid words with trailing whitespace", "Star Wars ", "Star Wars", false},
+		{"Valid word", "Star", "star", false},
+		{"Valid words", "Star Wars", "star wars", false},
+		{"Valid words with leading whitespace", " Star Wars", "star wars", false},
+		{"Valid words with trailing whitespace", "Star Wars ", "star wars", false},
 		{"Valid words with non-ASCII characters", "世界", "世界", false},
-		{"Valid words with punctuation", "Star!", "Star!", false},
+		{"Valid words with punctuation", "Star!", "star!", false},
 		{"Empty query", "", "", true},
 		{"Empty query with whitespace", " ", "", true},
 		{"Excessively long query", strings.Repeat("A", 999), "", true},
