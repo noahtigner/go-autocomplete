@@ -27,28 +27,30 @@ flowchart LR
     F --> I[Bigram postings]
     G --> J[Trigram postings]
 
-    H --> K[Query planner]
+    Q[RawSearchParams] --> R[Parse and validate query]
+    R --> K[Query planner]
+    H --> K
     I --> K
     J --> K
 
-    K --> L[Candidate verification]
+    K --> L[Candidate verification for terms over 3 bytes]
     L --> M[Bayesian ranking]
     M --> N[Top-K min heap]
 ```
 
 ## Performance Highlights
 
-Measured on macOS 14.6.1 with Go 1.25.1 on an Apple M2 Max. The full-corpus run used the locally generated IMDb dataset and reports maximum resident set size from `/usr/bin/time -l`.
+Measured on 2026-08-19 at commit `f88c616`, using macOS 14.6.1, Go 1.25.1, and an Apple M2 Max. The full-corpus capture used the locally generated IMDb dataset and reports maximum resident set size from `/usr/bin/time -l` for a prebuilt executable.
 
 | Measurement | Result |
 | --- | ---: |
 | Dataset | 12,699,818 IMDb titles |
-| Index build | 49.13 s |
-| Peak RSS | 3.84 GiB |
-| `Star Wars` search | 170 ms |
+| Index build | 35.61 s |
+| Peak RSS | 8.24 GiB |
+| `Star Wars` search | 30 ms |
 | `Star Wars` matches | 8,179 |
 
-The ASCII bitmap unigram optimization reduced common-unigram latency by 89.83%, memory allocated per search by 99.97%, and allocations by 98.70% in the deterministic 100,000-record benchmark corpus. See the [benchmark record](docs/benchmarks/2026-08-bitmap-unigram-search.md) for methodology and tradeoffs.
+The deterministic 100,000-record benchmark snapshot is recorded in [the current performance record](docs/benchmarks/2026-08-19-current-performance.md). The bitmap unigram percentages are a [historical 2026-08-12 comparison](docs/benchmarks/2026-08-bitmap-unigram-search.md), not a comparison with the current parsed-parameter API.
 
 ## Design Decisions
 
@@ -71,7 +73,7 @@ The ETL program downloads two official IMDb datasets:
 - `title.basics.tsv.gz`
 - `title.ratings.tsv.gz`
 
-It joins records by `tconst`, converts IMDb's TSV records into `models.Movie`, and writes one JSON object per line to `data/movies.jsonl`.
+It joins records by `tconst`, converts IMDb's TSV records into `movies.Movie` values, and writes one JSON object per line to `data/movies.jsonl`.
 
 The importer streams both compressed input files and streams JSONL output. The generated files are ignored by Git because they are large and IMDb data is refreshed regularly.
 
@@ -89,9 +91,11 @@ This avoids concurrent map writes without putting locks on the indexing hot path
 
 ### Search
 
+`ParseQuery` validates `RawSearchParams`, defaults an omitted limit to `10`, trims and lowercases the term, and returns validated `SearchParams`. It rejects blank terms, invalid UTF-8, terms over 64 bytes, and limits outside `0` through `100`. `Search` executes the validated parameters.
+
 ASCII one-character query terms use bitmap intersection directly. Two- and three-byte terms use bigram and trigram posting lists; longer terms intersect their trigrams to retrieve candidates, then verify the complete term with case-insensitive substring matching. Mixed queries first retrieve multigram candidates and filter them through the relevant unigram bitmaps. Query words may appear in any order.
 
-Search returns a `SearchResult` containing the total number of matching records and up to the requested number of full `models.Movie` values. Results are selected with a fixed-size min-heap and sorted by the Bayesian rating score precomputed during indexing. Movie ID is used as the descending tie-breaker. Empty queries and limits outside the range `0` through `100` return an error.
+`Search` returns a `SearchResult` containing the total number of matching records and up to the requested number of full `movies.Movie` values. Results are selected with a fixed-size min-heap and sorted by the Bayesian rating score precomputed during indexing. Movie ID is used as the descending tie-breaker.
 
 The Bayesian score combines:
 
@@ -141,7 +145,7 @@ After generating `data/movies.jsonl`, provide a query as the first argument:
 go run . "Star Wars"
 ```
 
-The application builds the index, searches the query, prints up to ten results, and reports processing and search timings. See [Performance Highlights](#performance-highlights) for a captured full-corpus measurement and environment.
+The application builds the index, searches the query with the default limit of ten results, and reports processing and search timings. See [Performance Highlights](#performance-highlights) for a captured full-corpus measurement and environment.
 
 ## Testing
 
@@ -179,13 +183,13 @@ go tool cover -html=/tmp/go-autocomplete.cover
 
 #### Benchmarks
 
-Benchmark collection instructions and historical optimization records are in [docs/benchmarks](docs/benchmarks/README.md). The first record documents the [bitmap unigram optimization](docs/benchmarks/2026-08-bitmap-unigram-search.md).
+Benchmark collection instructions and dated performance records are in [docs/benchmarks](docs/benchmarks/README.md). The current snapshot is [2026-08-19](docs/benchmarks/2026-08-19-current-performance.md); the [bitmap unigram record](docs/benchmarks/2026-08-bitmap-unigram-search.md) documents its historical optimization comparison.
 
 ## Known Limitations
 
 - Searches operate on `PrimaryTitle`; `OriginalTitle` is retained but not indexed.
 - Index construction is capped at 13,000,000 records.
-- The search limit must be between `0` and `100`; `0` returns only the match count.
+- The parsed search limit must be between `0` and `100`; `0` returns only the match count.
 - There is no minimum query length. Common one-character ASCII queries can require scanning and ranking a large bitmap intersection, while two-character and longer queries can produce large posting-list candidate sets.
 - Bigram, trigram, and mixed queries materialize candidate ID sets before top-K ranking. Pure ASCII unigram queries stream bitmap intersections instead.
 - Exact match counts and ranking require scanning every candidate that survives index filtering. Full substring verification is additionally required for query words longer than three bytes.
