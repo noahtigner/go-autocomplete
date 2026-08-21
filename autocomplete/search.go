@@ -63,27 +63,24 @@ func queryWordsRequireVerification(queryWords []string) bool {
 	return false
 }
 
-func (reverseIndex *Index) searchAllQueryWordsUnigrams(queryWords []string, limit int) SearchResult {
-	uniqueQueryChars := strings.Join(sets.Unique(queryWords), "")
+func (reverseIndex *Index) searchAllQueryWordsUnigrams(query SearchParams) (*movieHeap, int) {
+	uniqueQueryChars := strings.Join(sets.Unique(query.normalizedQuerySlice), "")
 	candidateBitSets := make([]*sets.BitSet, 0)
 
 	for i := range uniqueQueryChars {
 		char := uniqueQueryChars[i]
 
 		if reverseIndex.unigrams[char] == nil {
-			return SearchResult{
-				Total:  0,
-				Movies: []movies.Movie{},
-			}
+			return nil, 0
 		}
 
 		candidateBitSets = append(candidateBitSets, reverseIndex.unigrams[char])
 	}
 
-	topResults := newMovieHeap(limit)
+	topResults := newMovieHeap(query)
 
 	var visit func(int)
-	if limit > 0 {
+	if query.limit > 0 {
 		visit = func(slot int) {
 			topResults.add(reverseIndex.recordBySlot[slot])
 		}
@@ -91,25 +88,17 @@ func (reverseIndex *Index) searchAllQueryWordsUnigrams(queryWords []string, limi
 
 	totalMatches := sets.ForEachIntersection(candidateBitSets, visit)
 
-	heapResults := topResults.topKResults()
-
-	return SearchResult{
-		Total:  totalMatches,
-		Movies: heapResults,
-	}
+	return topResults, totalMatches
 }
 
-func (reverseIndex *Index) searchAllQueryWordsMultigrams(lookupWords []string, singleCharWords []string, limit int) SearchResult {
+func (reverseIndex *Index) searchAllQueryWordsMultigrams(query SearchParams, lookupWords []string, singleCharWords []string) (*movieHeap, int) {
 	// Collect pointers to each single-char word's bitSet
 	singleCharBitSets := make([]*sets.BitSet, len(singleCharWords))
 	for i, word := range singleCharWords {
 		bitSet := reverseIndex.unigrams[word[0]]
 
 		if bitSet == nil {
-			return SearchResult{
-				Total:  0,
-				Movies: []movies.Movie{},
-			}
+			return nil, 0
 		}
 
 		singleCharBitSets[i] = bitSet
@@ -118,7 +107,7 @@ func (reverseIndex *Index) searchAllQueryWordsMultigrams(lookupWords []string, s
 	candidateIds := retrieveSearchCandidateIds(*reverseIndex, lookupWords)
 	requiresVerification := queryWordsRequireVerification(lookupWords)
 	totalMatches := 0
-	topResults := newMovieHeap(limit)
+	topResults := newMovieHeap(query)
 
 	// Assess each candidate
 	for candidateId := range candidateIds {
@@ -142,17 +131,12 @@ func (reverseIndex *Index) searchAllQueryWordsMultigrams(lookupWords []string, s
 		}
 
 		totalMatches += 1
-		if limit > 0 {
+		if query.limit > 0 {
 			topResults.add(record)
 		}
 	}
 
-	heapResults := topResults.topKResults()
-
-	return SearchResult{
-		Total:  totalMatches,
-		Movies: heapResults,
-	}
+	return topResults, totalMatches
 }
 
 func (reverseIndex Index) Search(query SearchParams) SearchResult {
@@ -170,8 +154,22 @@ func (reverseIndex Index) Search(query SearchParams) SearchResult {
 		}
 	}
 
+	var heap *movieHeap
+	var count int
 	if !hasNonUnigram {
-		return reverseIndex.searchAllQueryWordsUnigrams(query.normalizedQuerySlice, query.limit)
+		heap, count = reverseIndex.searchAllQueryWordsUnigrams(query)
+	} else {
+		heap, count = reverseIndex.searchAllQueryWordsMultigrams(query, lookupWords, singleCharWords)
 	}
-	return reverseIndex.searchAllQueryWordsMultigrams(lookupWords, singleCharWords, query.limit)
+
+	if heap == nil {
+		return SearchResult{
+			Total:  0,
+			Movies: []movies.Movie{},
+		}
+	}
+	return SearchResult{
+		Total:  count,
+		Movies: heap.topKResults(),
+	}
 }

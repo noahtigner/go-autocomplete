@@ -8,6 +8,7 @@ import (
 	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
+// TODO: add title-relevance modifiers
 func ranksLower(a, b *IndexRecordItem) bool {
 	leftScore := a.bayesianRating
 	rightScore := b.bayesianRating
@@ -20,8 +21,9 @@ func ranksLower(a, b *IndexRecordItem) bool {
 }
 
 type movieHeap struct {
-	items    []*IndexRecordItem
-	capacity int
+	items           []*IndexRecordItem
+	capacity        int
+	normalizedQuery string
 }
 
 // Required heap methods
@@ -42,10 +44,11 @@ func (h *movieHeap) Pop() any {
 
 // Custom methods
 
-func newMovieHeap(limit int) *movieHeap {
+func newMovieHeap(query SearchParams) *movieHeap {
 	movieHeap := &movieHeap{
-		items:    make([]*IndexRecordItem, 0, limit),
-		capacity: limit,
+		items:           make([]*IndexRecordItem, 0, query.limit),
+		capacity:        query.limit,
+		normalizedQuery: query.normalizedQuery,
 	}
 	heap.Init(movieHeap)
 	return movieHeap

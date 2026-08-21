@@ -102,7 +102,7 @@ func TestFixedSizeMinHeap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			heap := newMovieHeap(tt.limit)
+			heap := newMovieHeap(SearchParams{limit: tt.limit, normalizedQuery: "test"})
 			for i := range tt.items {
 				heap.add(&tt.items[i])
 			}
