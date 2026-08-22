@@ -76,6 +76,19 @@ func TestMovieHeapUsesTitleRelevanceDuringAdmission(t *testing.T) {
 	}
 }
 
+func TestMovieHeapRejectsNonExactCandidateInExactOnlyBand(t *testing.T) {
+	heap := newMovieHeap(SearchParams{limit: 1, normalizedQuery: "star wars"})
+	nonExact := IndexRecordItem{Movie: movies.Movie{ID: 1}, normalizedTitle: "star wars episode", bayesianRating: 7.05}      // admitted score: 7.15
+	nonPrefix := IndexRecordItem{Movie: movies.Movie{ID: 2}, normalizedTitle: "lego star wars episode", bayesianRating: 7.0} // exact ceiling: 7.2; prefix ceiling: 7.1
+
+	heap.add(&nonExact)
+	heap.add(&nonPrefix)
+
+	if got := movieIDs(heap.topKResults()); !slices.Equal(got, []int{1}) {
+		t.Errorf("topKResults IDs = %v, want [1]", got)
+	}
+}
+
 func TestFixedSizeMinHeap(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -82,9 +82,15 @@ func (h *movieHeap) add(x *IndexRecordItem) {
 		return
 	}
 
-	// An exact title match receives the largest possible relevance boost, so lower-scoring
-	// candidates cannot enter the top K and do not need title-relevance evaluation.
-	if x.bayesianRating+exactTitleBoost < h.items[0].score {
+	currentLowestAdmittedScore := h.items[0].score
+
+	if x.bayesianRating+exactTitleBoost < currentLowestAdmittedScore {
+		// An exact title match receives the largest possible relevance boost, so lower-scoring
+		// candidates cannot enter the top K and do not need title-relevance evaluation.
+		return
+	} else if x.bayesianRating+prefixTitleBoost < currentLowestAdmittedScore && x.normalizedTitle != h.normalizedQuery {
+		// If a candidate is between currentLowestAdmittedScore - exactTitleBoost and currentLowestAdmittedScore - prefixTitleBoost,
+		// only an exact match can admit it
 		return
 	}
 

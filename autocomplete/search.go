@@ -42,8 +42,7 @@ func retrieveSearchCandidateIds(reverseIndex Index, queryWords []string) sets.Se
 	return intersection
 }
 
-func matchesAllQueryWords(movieTitle string, queryWords []string) bool {
-	normalizedTitle := normalizeName(movieTitle)
+func matchesAllQueryWords(normalizedTitle string, queryWords []string) bool {
 	for _, word := range queryWords {
 		if !strings.Contains(normalizedTitle, word) {
 			return false
@@ -126,7 +125,7 @@ func (reverseIndex *Index) searchAllQueryWordsMultigrams(query SearchParams, loo
 		}
 
 		// Check the multi-character words
-		if requiresVerification && !matchesAllQueryWords(record.PrimaryTitle, lookupWords) {
+		if requiresVerification && !matchesAllQueryWords(record.normalizedTitle, lookupWords) {
 			continue
 		}
 

@@ -40,7 +40,7 @@ flowchart LR
 
 ## Performance Highlights
 
-The full-corpus figures below are a historical baseline from 2026-08-19 at commit `f88c616`, before the HTTP service and query-aware ranking changes. The [2026-08-20 query-aware ranking record](docs/benchmarks/2026-08-20-query-aware-ranking.md) contains the current focused 100,000-record comparison and its documented latency/memory tradeoff.
+The full-corpus figures below are a historical baseline from 2026-08-19 at commit `f88c616`, before the HTTP service and query-aware ranking changes. The [2026-08-20 normalized-verification and admission-bound record](docs/benchmarks/2026-08-20-normalized-verification-and-admission-bound.md) contains the current focused 100,000-record comparison.
 
 | Measurement | Result |
 | --- | ---: |
