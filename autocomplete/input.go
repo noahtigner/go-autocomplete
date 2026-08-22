@@ -8,16 +8,12 @@ import (
 
 type RawSearchParams struct {
 	Term  string
-	Limit *int
+	Limit int
 }
 
 func ParseQuery(query RawSearchParams) (SearchParams, error) {
-	limit := 10
-	if query.Limit != nil {
-		if *query.Limit < 0 || *query.Limit > 100 {
-			return SearchParams{}, fmt.Errorf("Limit must be be in the range [0, 100]")
-		}
-		limit = *query.Limit
+	if query.Limit < 0 || query.Limit > 100 {
+		return SearchParams{}, fmt.Errorf("Limit must be be in the range [0, 100]")
 	}
 
 	if len(query.Term) > 64 {
@@ -39,6 +35,6 @@ func ParseQuery(query RawSearchParams) (SearchParams, error) {
 	return SearchParams{
 		normalizedQuery:      normalizedString,
 		normalizedQuerySlice: strings.Fields(normalizedString),
-		limit:                limit,
+		limit:                query.Limit,
 	}, nil
 }

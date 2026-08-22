@@ -2,7 +2,7 @@
 
 A custom in-memory search engine built over approximately 12.7 million IMDb movie, television, and video titles.
 
-The engine supports case-insensitive substring search across multiple query terms in any order using:
+The engine exposes case-insensitive substring search across multiple query terms in any order using:
 
 - Bitmap indexes for single-character ASCII terms.
 - Inverted bigram and trigram posting lists.
@@ -40,7 +40,7 @@ flowchart LR
 
 ## Performance Highlights
 
-Measured on 2026-08-19 at commit `f88c616`, using macOS 14.6.1, Go 1.25.1, and an Apple M2 Max. The full-corpus capture used the locally generated IMDb dataset and reports maximum resident set size from `/usr/bin/time -l` for a prebuilt executable.
+The full-corpus figures below are a historical baseline from 2026-08-19 at commit `f88c616`, before the HTTP service and query-aware ranking changes. The [2026-08-20 query-aware ranking record](docs/benchmarks/2026-08-20-query-aware-ranking.md) contains the current focused 100,000-record comparison and its documented latency/memory tradeoff.
 
 | Measurement | Result |
 | --- | ---: |
@@ -50,7 +50,7 @@ Measured on 2026-08-19 at commit `f88c616`, using macOS 14.6.1, Go 1.25.1, and a
 | `Star Wars` search | 30 ms |
 | `Star Wars` matches | 8,179 |
 
-The deterministic 100,000-record benchmark snapshot is recorded in [the current performance record](docs/benchmarks/2026-08-19-current-performance.md). The bitmap unigram percentages are a [historical 2026-08-12 comparison](docs/benchmarks/2026-08-bitmap-unigram-search.md), not a comparison with the current parsed-parameter API.
+The prior deterministic 100,000-record snapshot is recorded in [the 2026-08-19 performance record](docs/benchmarks/2026-08-19-current-performance.md). The bitmap unigram percentages are a [historical 2026-08-12 comparison](docs/benchmarks/2026-08-bitmap-unigram-search.md), not a comparison with the current parsed-parameter API.
 
 ## Design Decisions
 
@@ -81,8 +81,7 @@ The importer streams both compressed input files and streams JSONL output. The g
 
 The application reads `data/movies.jsonl` one record at a time. A producer:
 
-- Stores each complete movie record by ID alongside a precomputed Bayesian rating.
-- Normalizes its primary title.
+- Stores each complete movie record by ID alongside a precomputed Bayesian rating and normalized primary title.
 - Sends a small indexing job to each n-gram worker.
 
 Worker 1 builds one bitmap for each ASCII byte. Each bit is addressed by a dense record slot, allowing one-character query terms to be intersected efficiently with bitwise operations. Workers 2 and 3 build deduplicated inverted posting lists for byte bigrams and trigrams, keyed by raw movie ID.
@@ -91,11 +90,11 @@ This avoids concurrent map writes without putting locks on the indexing hot path
 
 ### Search
 
-`ParseQuery` validates `RawSearchParams`, defaults an omitted limit to `10`, trims and lowercases the term, and returns validated `SearchParams`. It rejects blank terms, invalid UTF-8, terms over 64 bytes, and limits outside `0` through `100`. `Search` executes the validated parameters.
+`GET /search` accepts a required `q` parameter and an optional `limit` parameter. The handler defaults an omitted limit to `10`, parses the request into `RawSearchParams`, and returns `400 Bad Request` for malformed input. `ParseQuery` trims and lowercases the term, validates supplied limits from `0` through `100`, and returns validated `SearchParams` for `Search` to execute.
 
 ASCII one-character query terms use bitmap intersection directly. Two- and three-byte terms use bigram and trigram posting lists; longer terms intersect their trigrams to retrieve candidates, then verify the complete term with case-insensitive substring matching. Mixed queries first retrieve multigram candidates and filter them through the relevant unigram bitmaps. Query words may appear in any order.
 
-`Search` returns a `SearchResult` containing the total number of matching records and up to the requested number of full `movies.Movie` values. Results are selected with a fixed-size min-heap and sorted by the Bayesian rating score precomputed during indexing. Movie ID is used as the descending tie-breaker.
+`Search` returns a `SearchResult` containing the total number of matching records and up to the requested number of full `movies.Movie` values. Results are selected with a fixed-size min-heap and sorted by a query-aware score: Bayesian rating plus a `0.2` exact-title boost or `0.1` title-prefix boost. Movie ID is used as the descending tie-breaker. The heap calculates title relevance only for candidates that can still enter the requested top K.
 
 The Bayesian score combines:
 
@@ -139,13 +138,19 @@ IMDb provides these datasets for personal and non-commercial use subject to its 
 
 ## Run Search
 
-After generating `data/movies.jsonl`, provide a query as the first argument:
+After generating `data/movies.jsonl`, start the server:
 
 ```bash
-go run . "Star Wars"
+go run .
 ```
 
-The application builds the index, searches the query with the default limit of ten results, and reports processing and search timings. See [Performance Highlights](#performance-highlights) for a captured full-corpus measurement and environment.
+The application builds the index once, then serves searches on port `8090`:
+
+```bash
+curl 'http://localhost:8090/search?q=Star+Wars&limit=10'
+```
+
+`q` must be nonblank. `limit` is optional, defaults to `10`, and must be an integer from `0` through `100`; `0` returns only the match count. The response is plain text and includes the matching records and total count.
 
 ## Testing
 
@@ -189,7 +194,7 @@ Benchmark collection instructions and dated performance records are in [docs/ben
 
 - Searches operate on `PrimaryTitle`; `OriginalTitle` is retained but not indexed.
 - Index construction is capped at 13,000,000 records.
-- The parsed search limit must be between `0` and `100`; `0` returns only the match count.
+- The HTTP search limit must be between `0` and `100`; `0` returns only the match count.
 - There is no minimum query length. Common one-character ASCII queries can require scanning and ranking a large bitmap intersection, while two-character and longer queries can produce large posting-list candidate sets.
 - Bigram, trigram, and mixed queries materialize candidate ID sets before top-K ranking. Pure ASCII unigram queries stream bitmap intersections instead.
 - Exact match counts and ranking require scanning every candidate that survives index filtering. Full substring verification is additionally required for query words longer than three bytes.

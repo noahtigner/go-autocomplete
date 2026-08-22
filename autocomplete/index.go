@@ -19,14 +19,15 @@ import (
 
 type IndexRecordItem struct {
 	movies.Movie
-	bayesianRating float64
-	slot           int // dense bitmap offset for unigram postings
+	bayesianRating  float64
+	normalizedTitle string
+	slot            int // dense bitmap offset for unigram postings
 }
 
 type indexJob struct {
-	id             int // raw IMDb ID for bigram/trigram postings
-	slot           int // dense bitmap offset for unigram postings
-	normalizedName string
+	id              int // raw IMDb ID for bigram/trigram postings
+	slot            int // dense bitmap offset for unigram postings
+	normalizedTitle string
 }
 
 type Index struct {
@@ -48,14 +49,14 @@ func (idx *Index) clean() {
 	idx.lastSeenTrigrams = nil
 }
 
-func (idx Index) multigramIndex(n int) map[string][]int {
+func (idx *Index) multigramIndex(n int) map[string][]int {
 	if n == 2 {
 		return idx.bigrams
 	}
 	return idx.trigrams
 }
 
-func (idx Index) lastSeenMultigramIndex(n int) map[string]int {
+func (idx *Index) lastSeenMultigramIndex(n int) map[string]int {
 	if n == 2 {
 		return idx.lastSeenBigrams
 	}
@@ -92,21 +93,22 @@ func openJsonlFile(fileName string) (*os.File, *json.Decoder, error) {
 	return file, decoder, nil
 }
 
-func (idx *Index) processRecordMetadata(movie *movies.Movie, i int) {
+func (idx *Index) processRecordMetadata(movie *movies.Movie, i int, normalizedTitle string) {
 	recordItem := &IndexRecordItem{
-		Movie:          *movie,
-		bayesianRating: movie.BayesianRating(),
-		slot:           i,
+		Movie:           *movie,
+		bayesianRating:  movie.BayesianRating(),
+		normalizedTitle: normalizedTitle,
+		slot:            i,
 	}
 	idx.records[movie.ID] = recordItem
 	idx.recordBySlot = append(idx.recordBySlot, recordItem)
 }
 
-func (idx Index) processRecordMultigram(id int, normalizedName string, n int) {
+func (idx *Index) processRecordMultigram(id int, normalizedTitle string, n int) {
 	index := idx.multigramIndex(n)
 	lastSeen := idx.lastSeenMultigramIndex(n)
 
-	for word := range strings.FieldsSeq(normalizedName) {
+	for word := range strings.FieldsSeq(normalizedTitle) {
 		for _, gram := range getNGrams(word, n) {
 			// prevent duplicate records caused by repeated grams
 			if previous, exists := lastSeen[gram]; exists && previous == id {
@@ -119,9 +121,9 @@ func (idx Index) processRecordMultigram(id int, normalizedName string, n int) {
 	}
 }
 
-func (idx *Index) processRecordUnigram(slot int, normalizedName string) {
-	for word := range strings.FieldsSeq(normalizedName) {
-		for i, _ := range word {
+func (idx *Index) processRecordUnigram(slot int, normalizedTitle string) {
+	for word := range strings.FieldsSeq(normalizedTitle) {
+		for i := range word {
 			char := word[i]
 			isASCII := char < utf8.RuneSelf
 			if !isASCII {
@@ -138,10 +140,10 @@ func (idx *Index) processRecordUnigram(slot int, normalizedName string) {
 
 func (idx *Index) processRecord(job indexJob, n int) {
 	if n == 1 {
-		idx.processRecordUnigram(job.slot, job.normalizedName)
+		idx.processRecordUnigram(job.slot, job.normalizedTitle)
 		return
 	}
-	idx.processRecordMultigram(job.id, job.normalizedName, n)
+	idx.processRecordMultigram(job.id, job.normalizedTitle, n)
 }
 
 func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
@@ -209,12 +211,13 @@ func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 			return Index{}, 0, fmt.Errorf("Duplicate record with id %d", movie.ID)
 		}
 
-		index.processRecordMetadata(&movie, processedCount)
+		normalizedTitle := normalizeName(movie.PrimaryTitle)
+		index.processRecordMetadata(&movie, processedCount, normalizedTitle)
 
 		job := indexJob{
-			id:             movie.ID,
-			normalizedName: normalizeName(movie.PrimaryTitle),
-			slot:           processedCount,
+			id:              movie.ID,
+			normalizedTitle: normalizedTitle,
+			slot:            processedCount,
 		}
 
 		for _, jobChannel := range jobs {

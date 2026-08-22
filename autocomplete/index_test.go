@@ -66,6 +66,9 @@ func TestBuildIndexFromRecordStream(t *testing.T) {
 		if count != 31 {
 			t.Fatalf("processed count = %d, want 31", count)
 		}
+		if got := index.records[23].normalizedTitle; got != "star wars: a new fixture" {
+			t.Errorf("normalized title = %q, want %q", got, "star wars: a new fixture")
+		}
 
 		result := index.Search(mustParseSearchParams(t, "moo", 10))
 		if result.Total != 1 || !slices.Equal(movieIDs(result.Movies), []int{26}) {

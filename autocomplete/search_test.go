@@ -26,7 +26,7 @@ func TestSearch(t *testing.T) {
 		{name: "two-character query", query: "IT", limit: 10, wantTotal: 3, wantIDs: []int{14, 13, 12}},
 		{name: "three-character case-insensitive query", query: "THE", limit: 10, wantTotal: 5, wantIDs: []int{4, 11, 8, 21, 28}},
 		{name: "multiword short case-insensitive query", query: "THE A", limit: 10, wantTotal: 3, wantIDs: []int{4, 8, 21}},
-		{name: "equal-score tie-breaker", query: "alpha beta", limit: 10, wantTotal: 2, wantIDs: []int{18, 17}},
+		{name: "exact title boost", query: "alpha beta", limit: 10, wantTotal: 2, wantIDs: []int{17, 18}},
 		{name: "result limit", query: "star", limit: 1, wantTotal: 12, wantIDs: []int{23}},
 		{name: "zero limit", query: "star", limit: 0, wantTotal: 12, wantIDs: []int{}},
 		{name: "no matches", query: "xylophone", limit: 10, wantTotal: 0, wantIDs: []int{}},
@@ -90,9 +90,9 @@ func TestSearchOneByteQueryRegressions(t *testing.T) {
 		wantTotal int
 		wantIDs   []int
 	}{
-		{name: "case insensitive", query: "A", limit: 10, wantTotal: 5, wantIDs: []int{39_063_631, 26_700_024, 103, 101, 2}},
-		{name: "whitespace normalized", query: " \tA\n", limit: 10, wantTotal: 5, wantIDs: []int{39_063_631, 26_700_024, 103, 101, 2}},
-		{name: "result limit", query: "a", limit: 1, wantTotal: 5, wantIDs: []int{39_063_631}},
+		{name: "case insensitive", query: "A", limit: 10, wantTotal: 5, wantIDs: []int{2, 39_063_631, 26_700_024, 103, 101}},
+		{name: "whitespace normalized", query: " \tA\n", limit: 10, wantTotal: 5, wantIDs: []int{2, 39_063_631, 26_700_024, 103, 101}},
+		{name: "result limit", query: "a", limit: 1, wantTotal: 5, wantIDs: []int{2}},
 		{name: "zero limit", query: "a", limit: 0, wantTotal: 5, wantIDs: []int{}},
 		{name: "miss", query: "q", limit: 10, wantTotal: 0, wantIDs: []int{}},
 		{name: "repeated character", query: "a a", limit: 10, wantTotal: 5, wantIDs: []int{39_063_631, 26_700_024, 103, 101, 2}},
@@ -201,7 +201,7 @@ func assertEquivalentSearchResult(t *testing.T, implementation string, got, want
 func mustParseSearchParams(t testing.TB, term string, limit int) SearchParams {
 	t.Helper()
 
-	params, err := ParseQuery(RawSearchParams{Term: term, Limit: &limit})
+	params, err := ParseQuery(RawSearchParams{Term: term, Limit: limit})
 	if err != nil {
 		t.Fatalf("ParseQuery(%q, %d): %v", term, limit, err)
 	}
@@ -283,8 +283,9 @@ func buildIndexFromPath(t *testing.T, path string) Index {
 }
 
 func bruteForceSearch(records []movies.Movie, query string, limit int) SearchResult {
-	queryWords := strings.Fields(strings.ToLower(query))
-	candidates := make([]*IndexRecordItem, 0, len(records))
+	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
+	queryWords := strings.Fields(normalizedQuery)
+	candidates := make([]scoredItem, 0, len(records))
 	for i := range records {
 		normalizedTitle := strings.ToLower(records[i].PrimaryTitle)
 		matches := true
@@ -295,18 +296,17 @@ func bruteForceSearch(records []movies.Movie, query string, limit int) SearchRes
 			}
 		}
 		if matches {
-			candidates = append(candidates, &IndexRecordItem{
-				Movie:          records[i],
-				bayesianRating: records[i].BayesianRating(),
-			})
+			item := &IndexRecordItem{
+				Movie:           records[i],
+				bayesianRating:  records[i].BayesianRating(),
+				normalizedTitle: normalizedTitle,
+			}
+			candidates = append(candidates, scoredItem{item: item, score: rankingScore(item, normalizedQuery)})
 		}
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].bayesianRating != candidates[j].bayesianRating {
-			return candidates[i].bayesianRating > candidates[j].bayesianRating
-		}
-		return candidates[i].ID > candidates[j].ID
+		return scoredItemLower(candidates[j], candidates[i])
 	})
 
 	resultCount := min(limit, len(candidates))
@@ -315,7 +315,7 @@ func bruteForceSearch(records []movies.Movie, query string, limit int) SearchRes
 		Movies: make([]movies.Movie, resultCount),
 	}
 	for i := range result.Movies {
-		result.Movies[i] = candidates[i].Movie
+		result.Movies[i] = candidates[i].item.Movie
 	}
 	return result
 }

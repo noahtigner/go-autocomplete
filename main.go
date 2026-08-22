@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -23,8 +22,26 @@ func headers(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func search(w http.ResponseWriter, req *http.Request, idx *autocomplete.Index, query autocomplete.SearchParams) {
+func search(w http.ResponseWriter, req *http.Request, idx *autocomplete.Index) {
 	ctx := req.Context()
+
+	queryParams := req.URL.Query()
+	q := queryParams.Get("q")
+	limit := 10
+	if queryParams.Has("limit") {
+		parsed, err := strconv.Atoi(queryParams.Get("limit"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		limit = parsed
+	}
+
+	query, err := autocomplete.ParseQuery(autocomplete.RawSearchParams{Term: q, Limit: limit})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	select {
 	case <-ctx.Done():
@@ -47,21 +64,7 @@ func search(w http.ResponseWriter, req *http.Request, idx *autocomplete.Index, q
 }
 
 func main() {
-
 	ioStart := time.Now()
-
-	flag.Parse()
-	args := flag.Args()
-	if len(args) < 1 {
-		fmt.Println("Error: missing 1 positional argument for the search term")
-		os.Exit(1)
-	}
-
-	query, err := autocomplete.ParseQuery(autocomplete.RawSearchParams{Term: args[0], Limit: nil})
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
 
 	index, processedCount, err := autocomplete.BuildIndexFromRecordStream("./data/movies.jsonl")
 	if err != nil {
@@ -72,8 +75,8 @@ func main() {
 	ioDuration := time.Since(ioStart)
 	fmt.Printf("Processed %d records in %.2fs\n", processedCount, ioDuration.Seconds())
 
-	http.HandleFunc("/search", func(w http.ResponseWriter, req *http.Request) {
-		search(w, req, &index, query)
+	http.HandleFunc("GET /search", func(w http.ResponseWriter, req *http.Request) {
+		search(w, req, &index)
 	})
 
 	http.HandleFunc("/hello", hello)
