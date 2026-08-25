@@ -1,6 +1,7 @@
 data/*.gz
 data/*.tsv
 data/*.jsonl
+data/*.jsonl-*
 data/bench-*.txt
 
 .DS_Store

@@ -113,3 +113,40 @@ func ForEachIntersection(bitSets []*BitSet, visit func(slot int)) int {
 
 	return total
 }
+
+type BitField uint32
+
+func (b *BitField) Set(idx int) {
+	mask := BitField(1) << idx
+	*b |= mask
+}
+
+func (b BitField) Contains(idx int) bool {
+	mask := BitField(1) << idx
+	return (b & mask) != 0
+}
+
+func (b BitField) GetSetIndexes() []int {
+	var result []int
+
+	// can mutate b since its a copy
+	for b != 0 {
+		// Find the lowest set bit
+		lowestSetBit := bits.TrailingZeros32(uint32(b))
+
+		result = append(result, lowestSetBit)
+
+		// Unset the lowest set bit
+		b &= b - 1
+	}
+
+	return result
+}
+
+func (b1 BitField) Intersection(b2 BitField) BitField {
+	return b1 & b2
+}
+
+func (b1 BitField) HasIntersection(b2 BitField) bool {
+	return (b1 & b2) > 0
+}
