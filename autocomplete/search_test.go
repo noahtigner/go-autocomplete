@@ -46,6 +46,41 @@ func TestSearch(t *testing.T) {
 	}
 }
 
+func TestSearchGenreFilters(t *testing.T) {
+	index := buildIndexFromMovies(t, []movies.Movie{
+		{ID: 1, PrimaryTitle: "A Drama", Genres: mustGenreBitField(t, "drama")},
+		{ID: 2, PrimaryTitle: "A Science", Genres: mustGenreBitField(t, "sci-fi")},
+		{ID: 3, PrimaryTitle: "A Action", Genres: mustGenreBitField(t, "action")},
+		{ID: 4, PrimaryTitle: "Abcd Science", Genres: mustGenreBitField(t, "sci-fi")},
+	})
+
+	tests := []struct {
+		name      string
+		query     string
+		genres    []string
+		limit     int
+		wantTotal int
+		wantIDs   []int
+	}{
+		{name: "unigram filter", query: "a", genres: []string{"SCI-FI"}, limit: 10, wantTotal: 2, wantIDs: []int{4, 2}},
+		{name: "unigram zero limit counts filtered records", query: "a", genres: []string{"sci-fi"}, limit: 0, wantTotal: 2, wantIDs: []int{}},
+		{name: "unigram no matching genre", query: "a", genres: []string{"horror"}, limit: 10, wantTotal: 0, wantIDs: []int{}},
+		{name: "multiple genres match either", query: "a", genres: []string{"action", "drama"}, limit: 10, wantTotal: 2, wantIDs: []int{3, 1}},
+		{name: "multigram filter", query: "abcd", genres: []string{"sci-fi"}, limit: 10, wantTotal: 1, wantIDs: []int{4}},
+		{name: "multigram no matching genre", query: "abcd", genres: []string{"drama"}, limit: 10, wantTotal: 0, wantIDs: []int{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := ParseQuery(RawSearchParams{Term: tt.query, Limit: tt.limit, Genres: tt.genres})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertSearchResult(t, index.Search(params), tt.wantTotal, tt.wantIDs)
+		})
+	}
+}
+
 func TestQueryWordsRequireVerification(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -206,6 +241,16 @@ func mustParseSearchParams(t testing.TB, term string, limit int) SearchParams {
 		t.Fatalf("ParseQuery(%q, %d): %v", term, limit, err)
 	}
 	return params
+}
+
+func mustGenreBitField(t testing.TB, genres ...string) movies.GenreBitField {
+	t.Helper()
+
+	bitField, err := movies.NewGenreBitField(genres...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bitField
 }
 
 func buildFixtureIndex(t *testing.T) Index {

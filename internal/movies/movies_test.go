@@ -1,6 +1,9 @@
 package movies
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestBayesianRating(t *testing.T) {
 	float5dot0 := 5.0
@@ -50,4 +53,93 @@ func TestBayesianRating(t *testing.T) {
 			t.Errorf("Want float in range [0, 10], got %f", got)
 		}
 	})
+}
+
+func TestGenreBitField(t *testing.T) {
+	wantGenreOrder := [...]string{
+		"action", "adult", "adventure", "animation", "biography", "comedy", "crime",
+		"documentary", "drama", "family", "fantasy", "film-noir", "game-show", "history",
+		"horror", "music", "musical", "mystery", "news", "reality-tv", "romance", "sci-fi",
+		"short", "sport", "talk-show", "thriller", "war", "western",
+	}
+	if GenresByIndex != wantGenreOrder {
+		t.Errorf("GenresByIndex = %v, want %v", GenresByIndex, wantGenreOrder)
+	}
+	if len(GenresByIndex) > genreBitFieldWidth {
+		t.Fatalf("genre count = %d, exceeds bitfield width %d", len(GenresByIndex), genreBitFieldWidth)
+	}
+
+	for index, genre := range GenresByIndex {
+		t.Run(genre, func(t *testing.T) {
+			got, err := NewGenreBitField(genre)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			want := uint32(1) << index
+			if uint32(got) != want {
+				t.Errorf("%q mask = %032b, want %032b", genre, got, want)
+			}
+		})
+	}
+
+	t.Run("combines genres and ignores duplicates", func(t *testing.T) {
+		got, err := NewGenreBitField("drama", "sci-fi", "drama")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		want := uint32(1<<8 | 1<<21)
+		if uint32(got) != want {
+			t.Errorf("mask = %032b, want %032b", got, want)
+		}
+	})
+
+	t.Run("rejects unknown genre", func(t *testing.T) {
+		if _, err := NewGenreBitField("unknown"); err == nil {
+			t.Fatal("NewGenreBitField returned nil error")
+		}
+	})
+}
+
+func TestGenreBitFieldJSON(t *testing.T) {
+	genres, err := NewGenreBitField("drama", "musical")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	movie := Movie{ID: 1, Genres: genres}
+	encoded, err := json.Marshal(movie)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const want = `{"id":1,"titleType":"","primaryTitle":"","originalTitle":"","isAdult":false,"year":null,"runtimeMinutes":null,"genres":65792,"averageRating":null,"numVotes":0}`
+	if string(encoded) != want {
+		t.Errorf("JSON = %s, want %s", encoded, want)
+	}
+
+	var decoded Movie
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Genres != genres {
+		t.Errorf("decoded genres = %032b, want %032b", decoded.Genres, genres)
+	}
+
+	var withoutGenres Movie
+	if err := json.Unmarshal([]byte(`{"id":2}`), &withoutGenres); err != nil {
+		t.Fatal(err)
+	}
+	if withoutGenres.Genres != 0 {
+		t.Errorf("missing genres = %032b, want empty mask", withoutGenres.Genres)
+	}
+
+	var nullGenres Movie
+	if err := json.Unmarshal([]byte(`{"id":3,"genres":null}`), &nullGenres); err != nil {
+		t.Fatal(err)
+	}
+	if nullGenres.Genres != 0 {
+		t.Errorf("null genres = %032b, want empty mask", nullGenres.Genres)
+	}
 }

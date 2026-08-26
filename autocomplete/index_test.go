@@ -121,6 +121,27 @@ func TestBuildIndexFromRecordStream(t *testing.T) {
 		}
 	})
 
+	t.Run("missing genres decode as an empty mask", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "movies.jsonl")
+		if err := os.WriteFile(path, []byte(`{"id":1,"primaryTitle":"Alpha"}`+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		index, count, err := BuildIndexFromRecordStream(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("processed count = %d, want 1", count)
+		}
+
+		query, err := ParseQuery(RawSearchParams{Term: "alpha", Limit: 10, Genres: []string{"drama"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSearchResult(t, index.Search(query), 0, []int{})
+	})
+
 	t.Run("duplicate ID", func(t *testing.T) {
 		path := writeMoviesJSONL(t, []movies.Movie{
 			{ID: 1, PrimaryTitle: "First"},

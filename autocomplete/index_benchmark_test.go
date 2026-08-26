@@ -26,11 +26,20 @@ func generateBenchmarkMovie(i int) movies.Movie {
 		i,
 	)
 	rating := max(min(4.0+float64(i%60)/10, 9.9), 0.1)
+	genre := "drama"
+	if i%2 != 0 {
+		genre = "action"
+	}
+	genres, err := movies.NewGenreBitField(genre)
+	if err != nil {
+		panic(err)
+	}
 
 	return movies.Movie{
 		ID:            i + 1,
 		TitleType:     "movie",
 		PrimaryTitle:  title,
+		Genres:        genres,
 		AverageRating: &rating,
 		NumVotes:      100 + i%100_000,
 	}

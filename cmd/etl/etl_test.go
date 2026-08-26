@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
 func TestMergeTitleData(t *testing.T) {
@@ -89,6 +91,7 @@ func TestParseMovie(t *testing.T) {
 		if movie.RuntimeMinutes == nil || *movie.RuntimeMinutes != 90 {
 			t.Errorf("runtime = %v, want 90", movie.RuntimeMinutes)
 		}
+		assertGenreMask(t, movie.Genres, 1<<8)
 	})
 
 	t.Run("preserves missing optional values", func(t *testing.T) {
@@ -101,7 +104,44 @@ func TestParseMovie(t *testing.T) {
 		if movie.Year != nil || movie.RuntimeMinutes != nil {
 			t.Errorf("movie = %+v, want nil year and runtime", movie)
 		}
+		assertGenreMask(t, movie.Genres, 1<<8)
 	})
+
+	t.Run("encodes multiple genres", func(t *testing.T) {
+		movie, err := parseMovie([]string{
+			"tt0000003", "movie", "Title", "Original", "0", "2000", "\\N", "90", "Drama,Musical",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertGenreMask(t, movie.Genres, 1<<8|1<<16)
+	})
+
+	t.Run("encodes missing genres as an empty mask", func(t *testing.T) {
+		movie, err := parseMovie([]string{
+			"tt0000004", "movie", "Title", "Original", "0", "2000", "\\N", "90", "\\N",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertGenreMask(t, movie.Genres, 0)
+	})
+
+	t.Run("rejects unknown genres", func(t *testing.T) {
+		_, err := parseMovie([]string{
+			"tt0000005", "movie", "Title", "Original", "0", "2000", "\\N", "90", "Unknown",
+		})
+		if err == nil || !strings.Contains(err.Error(), "Unexpected genre unknown") {
+			t.Fatalf("error = %v, want unknown genre error", err)
+		}
+	})
+}
+
+func assertGenreMask(t testing.TB, got movies.GenreBitField, want uint32) {
+	t.Helper()
+	if uint32(got) != want {
+		t.Errorf("genre mask = %032b, want %032b", got, want)
+	}
 }
 
 func TestParseMovieErrors(t *testing.T) {

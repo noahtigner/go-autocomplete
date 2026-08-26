@@ -54,3 +54,34 @@ func TestParseQuery(t *testing.T) {
 		})
 	}
 }
+
+func TestParseQueryGenres(t *testing.T) {
+	tests := []struct {
+		name      string
+		genres    []string
+		want      uint32
+		wantError bool
+	}{
+		{name: "case insensitive", genres: []string{"DrAmA"}, want: 1 << 8},
+		{name: "multiple genres", genres: []string{"action", "Sci-Fi"}, want: 1<<0 | 1<<21},
+		{name: "duplicates are idempotent", genres: []string{"drama", "drama"}, want: 1 << 8},
+		{name: "empty genre", genres: []string{""}, wantError: true},
+		{name: "unknown genre", genres: []string{"unknown"}, wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseQuery(RawSearchParams{Term: "star", Limit: 10, Genres: tt.genres})
+			if (err != nil) != tt.wantError {
+				t.Fatalf("ParseQuery error = %v, want error: %t", err, tt.wantError)
+			}
+			if tt.wantError {
+				return
+			}
+			if uint32(got.genres) != tt.want {
+				t.Errorf("genres = %032b, want %032b", got.genres, tt.want)
+			}
+		})
+	}
+
+}

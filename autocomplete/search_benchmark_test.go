@@ -5,6 +5,7 @@ import "testing"
 type searchBenchmarkCase struct {
 	name      string
 	query     string
+	genres    []string
 	limit     int
 	wantTotal int
 }
@@ -30,11 +31,15 @@ func BenchmarkSearchIndex100K(b *testing.B) {
 		{name: "common-unigram-limit-one", query: "e", limit: 1, wantTotal: 80_000},
 		{name: "common-unigram-limit-hundred", query: "e", limit: 100, wantTotal: 80_000},
 		{name: "common-unigram-zero-limit", query: "e", limit: 0, wantTotal: 80_000},
+		{name: "common-unigram-genre", query: "e", genres: []string{"drama"}, limit: 10, wantTotal: 40_000},
+		{name: "common-unigram-genre-zero-limit", query: "e", genres: []string{"drama"}, limit: 0, wantTotal: 40_000},
+		{name: "common-unigram-multi-genre", query: "e", genres: []string{"drama", "action"}, limit: 10, wantTotal: 80_000},
 		{name: "rare-unigram", query: "f", limit: 10, wantTotal: 20_000},
 		{name: "unigram-intersection", query: "e a", limit: 10, wantTotal: 60_000},
 		{name: "empty-unigram-intersection", query: "e q", limit: 10, wantTotal: 0},
 		{name: "common-bigram", query: "ar", limit: 10, wantTotal: 60_000},
 		{name: "common-trigram", query: "the", limit: 10, wantTotal: 20_000},
+		{name: "common-trigram-genre", query: "the", genres: []string{"drama"}, limit: 10, wantTotal: 10_000},
 		{name: "common-short-multiword-case-insensitive", query: "AR CH", limit: 10, wantTotal: 40_000},
 		{name: "mixed-short-long", query: "E EPISODE", limit: 10, wantTotal: 20_000},
 		{name: "mixed-short-long-limit-one", query: "E EPISODE", limit: 1, wantTotal: 20_000},
@@ -46,7 +51,10 @@ func BenchmarkSearchIndex100K(b *testing.B) {
 		{name: "long-query-zero-limit", query: "the", limit: 0, wantTotal: 20_000},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
-			query := mustParseSearchParams(b, tt.query, tt.limit)
+			query, err := ParseQuery(RawSearchParams{Term: tt.query, Limit: tt.limit, Genres: tt.genres})
+			if err != nil {
+				b.Fatal(err)
+			}
 			result := index.Search(query)
 			assertBenchmarkSearchResult(b, tt, result)
 
