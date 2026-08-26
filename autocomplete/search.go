@@ -12,6 +12,7 @@ type SearchParams struct {
 	normalizedQuery      string
 	normalizedQuerySlice []string
 	limit                int
+	genres               movies.GenreBitField
 }
 
 type SearchResult struct {
@@ -65,6 +66,7 @@ func queryWordsRequireVerification(queryWords []string) bool {
 func (reverseIndex *Index) searchAllQueryWordsUnigrams(query SearchParams) (*movieHeap, int) {
 	uniqueQueryChars := strings.Join(sets.Unique(query.normalizedQuerySlice), "")
 	candidateBitSets := make([]*sets.BitSet, 0)
+	shouldFilterByGenre := uint32(query.genres) > 0
 
 	for i := range uniqueQueryChars {
 		char := uniqueQueryChars[i]
@@ -77,15 +79,28 @@ func (reverseIndex *Index) searchAllQueryWordsUnigrams(query SearchParams) (*mov
 	}
 
 	topResults := newMovieHeap(query)
+	totalMatches := 0
 
-	var visit func(int)
-	if query.limit > 0 {
-		visit = func(slot int) {
-			topResults.add(reverseIndex.recordBySlot[slot])
+	if !shouldFilterByGenre && query.limit == 0 {
+		totalMatches := sets.ForEachIntersection(candidateBitSets, nil)
+		return topResults, totalMatches
+	}
+
+	visit := func(slot int) {
+		record := reverseIndex.recordBySlot[slot]
+
+		// Check if the filters allow this candidate
+		if shouldFilterByGenre && !query.genres.HasIntersection(record.Genres) {
+			return
+		}
+
+		totalMatches += 1
+		if query.limit > 0 {
+			topResults.add(record)
 		}
 	}
 
-	totalMatches := sets.ForEachIntersection(candidateBitSets, visit)
+	sets.ForEachIntersection(candidateBitSets, visit)
 
 	return topResults, totalMatches
 }
@@ -108,9 +123,16 @@ func (reverseIndex *Index) searchAllQueryWordsMultigrams(query SearchParams, loo
 	totalMatches := 0
 	topResults := newMovieHeap(query)
 
+	shouldFilterByGenre := uint32(query.genres) > 0
+
 	// Assess each candidate
 	for candidateId := range candidateIds {
 		record := reverseIndex.records[candidateId]
+
+		// Check if the filters allow this candidate
+		if shouldFilterByGenre && !query.genres.HasIntersection(record.Genres) {
+			continue
+		}
 
 		// Check the single-character words
 		matchesSingleChars := true

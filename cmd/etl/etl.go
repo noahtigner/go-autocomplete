@@ -171,6 +171,16 @@ func parseMovie(fields []string) (movies.Movie, error) {
 		runtimeMinutes = &value
 	}
 
+	cleanedGenre := strings.ReplaceAll(fields[8], "\\N", "")
+	cleanedGenre = strings.ReplaceAll(cleanedGenre, "  ", "")
+	cleanedGenre = strings.TrimSpace(cleanedGenre)
+	cleanedGenre = strings.ToLower(cleanedGenre)
+
+	genresBitField, err := movies.NewGenreBitField(strings.Split(cleanedGenre, ",")...)
+	if err != nil {
+		return movies.Movie{}, fmt.Errorf("%s on title with ID %v\n", err.Error(), id)
+	}
+
 	movie := movies.Movie{
 		ID:             id,
 		TitleType:      fields[1],
@@ -179,7 +189,7 @@ func parseMovie(fields []string) (movies.Movie, error) {
 		IsAdult:        fields[4] == "1",
 		Year:           year,
 		RuntimeMinutes: runtimeMinutes,
-		Genres:         fields[8],
+		Genres:         genresBitField,
 		NumVotes:       0, // default
 	}
 

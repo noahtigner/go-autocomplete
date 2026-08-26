@@ -116,6 +116,11 @@ func ForEachIntersection(bitSets []*BitSet, visit func(slot int)) int {
 
 type BitField uint32
 
+func NewBitField() *BitField {
+	bf := BitField(0)
+	return &bf
+}
+
 func (b *BitField) Set(idx int) {
 	mask := BitField(1) << idx
 	*b |= mask

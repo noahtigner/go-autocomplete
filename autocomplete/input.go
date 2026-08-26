@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
 type RawSearchParams struct {
-	Term  string
-	Limit int
+	Term   string
+	Limit  int
+	Genres []string
 }
 
 func ParseQuery(query RawSearchParams) (SearchParams, error) {
@@ -30,11 +33,23 @@ func ParseQuery(query RawSearchParams) (SearchParams, error) {
 		return SearchParams{}, fmt.Errorf("Query string must only contain valid UTF-8 characters")
 	}
 
+	genres, err := movies.NewGenreBitField()
+	if err != nil {
+		return SearchParams{}, err
+	}
+
+	for _, g := range query.Genres {
+		if err := genres.SetGenre(strings.ToLower(g)); err != nil {
+			return SearchParams{}, err
+		}
+	}
+
 	normalizedString := strings.ToLower(trimmedQuery)
 
 	return SearchParams{
 		normalizedQuery:      normalizedString,
 		normalizedQuerySlice: strings.Fields(normalizedString),
 		limit:                query.Limit,
+		genres:               genres,
 	}, nil
 }

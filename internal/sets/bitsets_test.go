@@ -230,13 +230,13 @@ func TestBitFieldSet(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bf := BitField(0)
+			bf := NewBitField()
 			for _, id := range tt.indexes {
 				bf.Set(id)
 			}
 
 			want := BitField(tt.want)
-			if want != bf {
+			if want != *bf {
 				t.Errorf("got %032b, want %032b (%d)", bf, want, want)
 			}
 		})
@@ -258,7 +258,7 @@ func TestBitFieldContains(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.testName, func(t *testing.T) {
-			bf := BitField(0)
+			bf := NewBitField()
 
 			for _, id := range tt.setIDs {
 				bf.Set(id)
@@ -266,41 +266,6 @@ func TestBitFieldContains(t *testing.T) {
 
 			if got := bf.Contains(tt.id); got != tt.want {
 				t.Errorf("%032b.Contains(%d) = %t, want %t", bf, tt.id, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestBitFieldHasIntersection(t *testing.T) {
-	tests := []struct {
-		testName string
-		b1Vals   []int
-		b2Vals   []int
-		want     bool
-	}{
-		{"Both unset", []int{}, []int{}, false},
-		{"Both set", []int{0}, []int{0}, true},
-		{"Left set only", []int{0}, []int{}, false},
-		{"No overlap", []int{1, 3}, []int{2}, false},
-		{"Some overlap", []int{1, 3}, []int{2, 3}, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.testName, func(t *testing.T) {
-			b1 := BitField(0)
-			b2 := BitField(0)
-
-			for _, v := range tt.b1Vals {
-				b1.Set(v)
-			}
-			for _, v := range tt.b2Vals {
-				b2.Set(v)
-			}
-
-			got := b1.HasIntersection(b2)
-
-			if got != tt.want {
-				t.Errorf("got %t, want %t", got, tt.want)
 			}
 		})
 	}
@@ -318,7 +283,7 @@ func TestBitFieldGetSetIndexes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.testName, func(t *testing.T) {
-			bf := BitField(0)
+			bf := NewBitField()
 			for _, v := range tt.setVals {
 				bf.Set(v)
 			}
@@ -349,9 +314,9 @@ func TestBitFieldIntersection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.testName, func(t *testing.T) {
-			b1 := BitField(0)
-			b2 := BitField(0)
-			want := BitField(0)
+			b1 := NewBitField()
+			b2 := NewBitField()
+			want := NewBitField()
 
 			for _, v := range tt.b1Vals {
 				b1.Set(v)
@@ -363,8 +328,43 @@ func TestBitFieldIntersection(t *testing.T) {
 				want.Set(v)
 			}
 
-			if got := b1.Intersection(b2); got != want {
+			if got := b1.Intersection(*b2); got != *want {
 				t.Errorf("got %032b, want %032b", got, want)
+			}
+		})
+	}
+}
+
+func TestBitFieldHasIntersection(t *testing.T) {
+	tests := []struct {
+		testName string
+		b1Vals   []int
+		b2Vals   []int
+		want     bool
+	}{
+		{"Both unset", []int{}, []int{}, false},
+		{"Both set", []int{0}, []int{0}, true},
+		{"Left set only", []int{0}, []int{}, false},
+		{"No overlap", []int{1, 3}, []int{2}, false},
+		{"Some overlap", []int{1, 3}, []int{2, 3}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.testName, func(t *testing.T) {
+			b1 := NewBitField()
+			b2 := NewBitField()
+
+			for _, v := range tt.b1Vals {
+				b1.Set(v)
+			}
+			for _, v := range tt.b2Vals {
+				b2.Set(v)
+			}
+
+			got := b1.HasIntersection(*b2)
+
+			if got != tt.want {
+				t.Errorf("got %t, want %t", got, tt.want)
 			}
 		})
 	}
