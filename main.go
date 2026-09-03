@@ -38,8 +38,9 @@ func search(w http.ResponseWriter, req *http.Request, idx *autocomplete.Index) {
 	}
 
 	genres := queryParams["genre"]
+	titleTypes := queryParams["type"]
 
-	query, err := autocomplete.ParseQuery(autocomplete.RawSearchParams{Term: q, Limit: limit, Genres: genres})
+	query, err := autocomplete.ParseQuery(autocomplete.RawSearchParams{Term: q, Limit: limit, Genres: genres, TitleTypes: titleTypes})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

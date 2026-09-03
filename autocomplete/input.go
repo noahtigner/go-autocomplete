@@ -9,9 +9,10 @@ import (
 )
 
 type RawSearchParams struct {
-	Term   string
-	Limit  int
-	Genres []string
+	Term       string
+	Limit      int
+	Genres     []string
+	TitleTypes []string
 }
 
 func ParseQuery(query RawSearchParams) (SearchParams, error) {
@@ -44,6 +45,15 @@ func ParseQuery(query RawSearchParams) (SearchParams, error) {
 		}
 	}
 
+	titleTypes := make([]movies.TitleTypeEnum, len(query.TitleTypes))
+	for i, t := range query.TitleTypes {
+		titleType, err := movies.NewTitleTypeEnum(t)
+		if err != nil {
+			return SearchParams{}, err
+		}
+		titleTypes[i] = titleType
+	}
+
 	normalizedString := strings.ToLower(trimmedQuery)
 
 	return SearchParams{
@@ -51,5 +61,6 @@ func ParseQuery(query RawSearchParams) (SearchParams, error) {
 		normalizedQuerySlice: strings.Fields(normalizedString),
 		limit:                query.Limit,
 		genres:               genres,
+		titleTypes:           titleTypes,
 	}, nil
 }

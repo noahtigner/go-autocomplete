@@ -48,31 +48,38 @@ func TestSearch(t *testing.T) {
 
 func TestSearchGenreFilters(t *testing.T) {
 	index := buildIndexFromMovies(t, []movies.Movie{
-		{ID: 1, PrimaryTitle: "A Drama", Genres: mustGenreBitField(t, "drama")},
-		{ID: 2, PrimaryTitle: "A Science", Genres: mustGenreBitField(t, "sci-fi")},
-		{ID: 3, PrimaryTitle: "A Action", Genres: mustGenreBitField(t, "action")},
-		{ID: 4, PrimaryTitle: "Abcd Science", Genres: mustGenreBitField(t, "sci-fi")},
+		{ID: 1, PrimaryTitle: "A Drama", TitleType: mustTitleType(t, "movie"), Genres: mustGenreBitField(t, "drama")},
+		{ID: 2, PrimaryTitle: "A Science", TitleType: mustTitleType(t, "tvSeries"), Genres: mustGenreBitField(t, "sci-fi")},
+		{ID: 3, PrimaryTitle: "A Action", TitleType: mustTitleType(t, "short"), Genres: mustGenreBitField(t, "action")},
+		{ID: 4, PrimaryTitle: "Abcd Science", TitleType: mustTitleType(t, "tvSeries"), Genres: mustGenreBitField(t, "sci-fi")},
 	})
 
 	tests := []struct {
-		name      string
-		query     string
-		genres    []string
-		limit     int
-		wantTotal int
-		wantIDs   []int
+		name       string
+		query      string
+		genres     []string
+		titleTypes []string
+		limit      int
+		wantTotal  int
+		wantIDs    []int
 	}{
 		{name: "unigram filter", query: "a", genres: []string{"SCI-FI"}, limit: 10, wantTotal: 2, wantIDs: []int{4, 2}},
 		{name: "unigram zero limit counts filtered records", query: "a", genres: []string{"sci-fi"}, limit: 0, wantTotal: 2, wantIDs: []int{}},
 		{name: "unigram no matching genre", query: "a", genres: []string{"horror"}, limit: 10, wantTotal: 0, wantIDs: []int{}},
 		{name: "multiple genres match either", query: "a", genres: []string{"action", "drama"}, limit: 10, wantTotal: 2, wantIDs: []int{3, 1}},
+		{name: "unigram title type filter", query: "a", titleTypes: []string{"TVSERIES"}, limit: 10, wantTotal: 2, wantIDs: []int{4, 2}},
+		{name: "unigram title type zero limit counts filtered records", query: "a", titleTypes: []string{"tvseries"}, limit: 0, wantTotal: 2, wantIDs: []int{}},
+		{name: "multiple title types match either", query: "a", titleTypes: []string{"movie", "short"}, limit: 10, wantTotal: 2, wantIDs: []int{3, 1}},
+		{name: "genre and title type filters both match", query: "a", genres: []string{"drama"}, titleTypes: []string{"movie"}, limit: 10, wantTotal: 1, wantIDs: []int{1}},
+		{name: "genre and title type filters both must match", query: "a", genres: []string{"drama"}, titleTypes: []string{"tvseries"}, limit: 10, wantTotal: 0, wantIDs: []int{}},
 		{name: "multigram filter", query: "abcd", genres: []string{"sci-fi"}, limit: 10, wantTotal: 1, wantIDs: []int{4}},
+		{name: "multigram title type filter", query: "abcd", titleTypes: []string{"tvseries"}, limit: 10, wantTotal: 1, wantIDs: []int{4}},
 		{name: "multigram no matching genre", query: "abcd", genres: []string{"drama"}, limit: 10, wantTotal: 0, wantIDs: []int{}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			params, err := ParseQuery(RawSearchParams{Term: tt.query, Limit: tt.limit, Genres: tt.genres})
+			params, err := ParseQuery(RawSearchParams{Term: tt.query, Limit: tt.limit, Genres: tt.genres, TitleTypes: tt.titleTypes})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -251,6 +258,16 @@ func mustGenreBitField(t testing.TB, genres ...string) movies.GenreBitField {
 		t.Fatal(err)
 	}
 	return bitField
+}
+
+func mustTitleType(t testing.TB, titleType string) movies.TitleTypeEnum {
+	t.Helper()
+
+	enum, err := movies.NewTitleTypeEnum(titleType)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return enum
 }
 
 func buildFixtureIndex(t *testing.T) Index {

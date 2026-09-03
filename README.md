@@ -40,7 +40,7 @@ flowchart LR
 
 ## Performance Highlights
 
-The full-corpus figures below are a historical baseline from 2026-08-19 at commit `f88c616`, before the HTTP service and query-aware ranking changes. The [2026-08-20 normalized-verification and admission-bound record](docs/benchmarks/2026-08-20-normalized-verification-and-admission-bound.md) contains the current focused 100,000-record comparison, and the [2026-08-25 genre filtering record](docs/benchmarks/2026-08-25-genre-bitfield-filtering.md) captures the current genre-aware workloads.
+The full-corpus figures below are a historical baseline from 2026-08-19 at commit `f88c616`, before the HTTP service and query-aware ranking changes. The [2026-08-20 normalized-verification and admission-bound record](docs/benchmarks/2026-08-20-normalized-verification-and-admission-bound.md) contains the current focused 100,000-record comparison, while the [2026-08-25 title-type filtering record](docs/benchmarks/2026-08-25-title-type-enum-filtering.md) captures the current filter and enum workloads.
 
 | Measurement | Result |
 | --- | ---: |
@@ -73,11 +73,11 @@ The ETL program downloads two official IMDb datasets:
 - `title.basics.tsv.gz`
 - `title.ratings.tsv.gz`
 
-It joins records by `tconst`, converts IMDb's TSV records into `movies.Movie` values, and writes one JSON object per line to `data/movies.jsonl`. Each record stores its genres as a numeric bitmask rather than genre strings.
+It joins records by `tconst`, converts IMDb's TSV records into `movies.Movie` values, and writes one JSON object per line to `data/movies.jsonl`. Each record stores its genres as a numeric bitmask and its title type as a numeric enum rather than strings.
 
 The importer streams both compressed input files and streams JSONL output. The generated files are ignored by Git because they are large and IMDb data is refreshed regularly.
 
-The genre-mask indexes are defined by `internal/movies.GenresByIndex`. Their order is a persisted JSONL schema contract and must remain stable; append new genres only while the 32-bit mask has capacity. Datasets written with the prior string-valued `genres` schema must be regenerated with the ETL command.
+The genre-mask indexes are defined by `internal/movies.GenresByIndex`. Their order is a persisted JSONL schema contract and must remain stable; append new genres only while the 32-bit mask has capacity. Title-type values are one-based indexes into `internal/movies.TitleTypesByIndex`; zero is invalid. Both mappings are persisted JSONL schema contracts. Regenerate datasets written with string-valued fields or an earlier numeric title-type mapping with the ETL command.
 
 ### Index construction
 
@@ -92,9 +92,11 @@ This avoids concurrent map writes without putting locks on the indexing hot path
 
 ### Search
 
-`GET /search` accepts a required `q` parameter, an optional `limit` parameter, and repeatable `genre` parameters. The handler defaults an omitted limit to `10`, parses the request into `RawSearchParams`, and returns `400 Bad Request` for malformed input. `ParseQuery` trims and lowercases the term, validates supplied limits from `0` through `100`, and returns validated `SearchParams` for `Search` to execute.
+`GET /search` accepts a required `q` parameter, an optional `limit` parameter, and repeatable `genre` and `type` parameters. The handler defaults an omitted limit to `10`, parses the request into `RawSearchParams`, and returns `400 Bad Request` for malformed input. `ParseQuery` trims and lowercases the term, validates supplied limits from `0` through `100`, and returns validated `SearchParams` for `Search` to execute.
 
 Genre names are case-insensitive. Repeating `genre` uses OR semantics, so `genre=action&genre=sci-fi` includes records with either genre. Accepted names are `action`, `adult`, `adventure`, `animation`, `biography`, `comedy`, `crime`, `documentary`, `drama`, `family`, `fantasy`, `film-noir`, `game-show`, `history`, `horror`, `music`, `musical`, `mystery`, `news`, `reality-tv`, `romance`, `sci-fi`, `short`, `sport`, `talk-show`, `thriller`, `war`, and `western`. Empty or unknown genre parameters return `400 Bad Request`.
+
+Title-type names are case-insensitive. Repeating `type` also uses OR semantics. Accepted names are `movie`, `short`, `tvepisode`, `tvminiseries`, `tvmovie`, `tvpilot`, `tvseries`, `tvshort`, `tvspecial`, `video`, and `videogame`. When both `genre` and `type` filters are supplied, a record must match at least one value from each category. Empty or unknown title-type parameters return `400 Bad Request`.
 
 ASCII one-character query terms use bitmap intersection directly. Two- and three-byte terms use bigram and trigram posting lists; longer terms intersect their trigrams to retrieve candidates, then verify the complete term with case-insensitive substring matching. Mixed queries first retrieve multigram candidates and filter them through the relevant unigram bitmaps. Query words may appear in any order.
 
@@ -151,7 +153,7 @@ go run .
 The application builds the index once, then serves searches on port `8090`:
 
 ```bash
-curl 'http://localhost:8090/search?q=Star+Wars&limit=10&genre=sci-fi&genre=adventure'
+curl 'http://localhost:8090/search?q=Star+Wars&limit=10&genre=sci-fi&genre=adventure&type=movie&type=tvseries'
 ```
 
 `q` must be nonblank. `limit` is optional, defaults to `10`, and must be an integer from `0` through `100`; `0` returns only the match count. The response is plain text and includes the matching records and total count.
@@ -192,7 +194,7 @@ go tool cover -html=/tmp/go-autocomplete.cover
 
 #### Benchmarks
 
-Benchmark collection instructions and dated performance records are in [docs/benchmarks](docs/benchmarks/README.md). The current genre-aware snapshot is [2026-08-25](docs/benchmarks/2026-08-25-genre-bitfield-filtering.md); the [bitmap unigram record](docs/benchmarks/2026-08-bitmap-unigram-search.md) documents its historical optimization comparison.
+Benchmark collection instructions and dated performance records are in [docs/benchmarks](docs/benchmarks/README.md). The current filter snapshot is [2026-08-25](docs/benchmarks/2026-08-25-title-type-enum-filtering.md); the [bitmap unigram record](docs/benchmarks/2026-08-bitmap-unigram-search.md) documents its historical optimization comparison.
 
 ## Known Limitations
 

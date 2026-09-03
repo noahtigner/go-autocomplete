@@ -2,6 +2,7 @@ package movies
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -107,14 +108,18 @@ func TestGenreBitFieldJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	titleType, err := NewTitleTypeEnum("movie")
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	movie := Movie{ID: 1, Genres: genres}
+	movie := Movie{ID: 1, TitleType: titleType, Genres: genres}
 	encoded, err := json.Marshal(movie)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	const want = `{"id":1,"titleType":"","primaryTitle":"","originalTitle":"","isAdult":false,"year":null,"runtimeMinutes":null,"genres":65792,"averageRating":null,"numVotes":0}`
+	const want = `{"id":1,"titleType":1,"primaryTitle":"","originalTitle":"","isAdult":false,"year":null,"runtimeMinutes":null,"genres":65792,"averageRating":null,"numVotes":0}`
 	if string(encoded) != want {
 		t.Errorf("JSON = %s, want %s", encoded, want)
 	}
@@ -125,6 +130,9 @@ func TestGenreBitFieldJSON(t *testing.T) {
 	}
 	if decoded.Genres != genres {
 		t.Errorf("decoded genres = %032b, want %032b", decoded.Genres, genres)
+	}
+	if decoded.TitleType != titleType {
+		t.Errorf("decoded title type = %d, want %d", decoded.TitleType, titleType)
 	}
 
 	var withoutGenres Movie
@@ -141,5 +149,56 @@ func TestGenreBitFieldJSON(t *testing.T) {
 	}
 	if nullGenres.Genres != 0 {
 		t.Errorf("null genres = %032b, want empty mask", nullGenres.Genres)
+	}
+}
+
+func TestTitleTypeEnum(t *testing.T) {
+	wantTitleTypeOrder := [...]string{
+		"movie", "short", "tvepisode", "tvminiseries", "tvmovie", "tvpilot",
+		"tvseries", "tvshort", "tvspecial", "video", "videogame",
+	}
+	if TitleTypesByIndex != wantTitleTypeOrder {
+		t.Errorf("TitleTypesByIndex = %v, want %v", TitleTypesByIndex, wantTitleTypeOrder)
+	}
+
+	for index, titleType := range TitleTypesByIndex {
+		t.Run(titleType, func(t *testing.T) {
+			got, err := NewTitleTypeEnum(strings.ToUpper(titleType))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := TitleTypeEnum(index + 1)
+			if got != want {
+				t.Errorf("%q enum = %d, want %d", titleType, got, want)
+			}
+			if !got.IsValid() {
+				t.Errorf("%q enum is invalid", titleType)
+			}
+		})
+	}
+
+	if unknownTitleType.IsValid() {
+		t.Error("unknown title type is valid")
+	}
+	if TitleTypeEnum(len(TitleTypesByIndex) + 1).IsValid() {
+		t.Error("out-of-range title type is valid")
+	}
+	if _, err := NewTitleTypeEnum("unknown"); err == nil {
+		t.Fatal("NewTitleTypeEnum returned nil error for an unknown title type")
+	}
+
+	movie, err := NewTitleTypeEnum("movie")
+	if err != nil {
+		t.Fatal(err)
+	}
+	short, err := NewTitleTypeEnum("short")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !movie.HasIntersection(short, movie) {
+		t.Error("movie does not match a filter containing movie")
+	}
+	if movie.HasIntersection(short) {
+		t.Error("movie matches a filter without movie")
 	}
 }

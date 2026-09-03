@@ -171,6 +171,7 @@ func parseMovie(fields []string) (movies.Movie, error) {
 		runtimeMinutes = &value
 	}
 
+	// TODO: clean this up and optimize it
 	cleanedGenre := strings.ReplaceAll(fields[8], "\\N", "")
 	cleanedGenre = strings.ReplaceAll(cleanedGenre, "  ", "")
 	cleanedGenre = strings.TrimSpace(cleanedGenre)
@@ -181,9 +182,14 @@ func parseMovie(fields []string) (movies.Movie, error) {
 		return movies.Movie{}, fmt.Errorf("%s on title with ID %v\n", err.Error(), id)
 	}
 
+	titleTypeEnum, err := movies.NewTitleTypeEnum(fields[1])
+	if err != nil {
+		return movies.Movie{}, fmt.Errorf("%s on title with ID %v\n", err.Error(), id)
+	}
+
 	movie := movies.Movie{
 		ID:             id,
-		TitleType:      fields[1],
+		TitleType:      titleTypeEnum,
 		PrimaryTitle:   fields[2],
 		OriginalTitle:  fields[3],
 		IsAdult:        fields[4] == "1",

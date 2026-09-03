@@ -92,6 +92,7 @@ func TestParseMovie(t *testing.T) {
 			t.Errorf("runtime = %v, want 90", movie.RuntimeMinutes)
 		}
 		assertGenreMask(t, movie.Genres, 1<<8)
+		assertTitleType(t, movie.TitleType, 1)
 	})
 
 	t.Run("preserves missing optional values", func(t *testing.T) {
@@ -105,6 +106,7 @@ func TestParseMovie(t *testing.T) {
 			t.Errorf("movie = %+v, want nil year and runtime", movie)
 		}
 		assertGenreMask(t, movie.Genres, 1<<8)
+		assertTitleType(t, movie.TitleType, 1)
 	})
 
 	t.Run("encodes multiple genres", func(t *testing.T) {
@@ -135,12 +137,38 @@ func TestParseMovie(t *testing.T) {
 			t.Fatalf("error = %v, want unknown genre error", err)
 		}
 	})
+
+	t.Run("encodes case-insensitive title types", func(t *testing.T) {
+		movie, err := parseMovie([]string{
+			"tt0000006", "tvSeries", "Title", "Original", "0", "2000", "\\N", "90", "Drama",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertTitleType(t, movie.TitleType, 7)
+	})
+
+	t.Run("rejects unknown title types", func(t *testing.T) {
+		_, err := parseMovie([]string{
+			"tt0000007", "unknown", "Title", "Original", "0", "2000", "\\N", "90", "Drama",
+		})
+		if err == nil || !strings.Contains(err.Error(), "Unexpected title type unknown") {
+			t.Fatalf("error = %v, want unknown title type error", err)
+		}
+	})
 }
 
 func assertGenreMask(t testing.TB, got movies.GenreBitField, want uint32) {
 	t.Helper()
 	if uint32(got) != want {
 		t.Errorf("genre mask = %032b, want %032b", got, want)
+	}
+}
+
+func assertTitleType(t testing.TB, got movies.TitleTypeEnum, want uint8) {
+	t.Helper()
+	if uint8(got) != want {
+		t.Errorf("title type = %d, want %d", got, want)
 	}
 }
 

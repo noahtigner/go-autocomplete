@@ -13,6 +13,7 @@ type SearchParams struct {
 	normalizedQuerySlice []string
 	limit                int
 	genres               movies.GenreBitField
+	titleTypes           []movies.TitleTypeEnum
 }
 
 type SearchResult struct {
@@ -63,10 +64,19 @@ func queryWordsRequireVerification(queryWords []string) bool {
 	return false
 }
 
+func shouldFilterByGenre(query SearchParams) bool {
+	return uint32(query.genres) > 0
+}
+
+func shouldFilterByTitleType(query SearchParams) bool {
+	return len(query.titleTypes) > 0
+}
+
 func (reverseIndex *Index) searchAllQueryWordsUnigrams(query SearchParams) (*movieHeap, int) {
 	uniqueQueryChars := strings.Join(sets.Unique(query.normalizedQuerySlice), "")
 	candidateBitSets := make([]*sets.BitSet, 0)
-	shouldFilterByGenre := uint32(query.genres) > 0
+	shouldFilterGenre := shouldFilterByGenre(query)
+	shouldFilterTitleType := shouldFilterByTitleType(query)
 
 	for i := range uniqueQueryChars {
 		char := uniqueQueryChars[i]
@@ -81,7 +91,7 @@ func (reverseIndex *Index) searchAllQueryWordsUnigrams(query SearchParams) (*mov
 	topResults := newMovieHeap(query)
 	totalMatches := 0
 
-	if !shouldFilterByGenre && query.limit == 0 {
+	if !shouldFilterGenre && !shouldFilterTitleType && query.limit == 0 {
 		totalMatches := sets.ForEachIntersection(candidateBitSets, nil)
 		return topResults, totalMatches
 	}
@@ -89,8 +99,10 @@ func (reverseIndex *Index) searchAllQueryWordsUnigrams(query SearchParams) (*mov
 	visit := func(slot int) {
 		record := reverseIndex.recordBySlot[slot]
 
-		// Check if the filters allow this candidate
-		if shouldFilterByGenre && !query.genres.HasIntersection(record.Genres) {
+		if shouldFilterGenre && !query.genres.HasIntersection(record.Genres) {
+			return
+		}
+		if shouldFilterTitleType && !record.TitleType.HasIntersection(query.titleTypes...) {
 			return
 		}
 
@@ -122,15 +134,17 @@ func (reverseIndex *Index) searchAllQueryWordsMultigrams(query SearchParams, loo
 	requiresVerification := queryWordsRequireVerification(lookupWords)
 	totalMatches := 0
 	topResults := newMovieHeap(query)
-
-	shouldFilterByGenre := uint32(query.genres) > 0
+	shouldFilterGenre := shouldFilterByGenre(query)
+	shouldFilterTitleType := shouldFilterByTitleType(query)
 
 	// Assess each candidate
 	for candidateId := range candidateIds {
 		record := reverseIndex.records[candidateId]
 
-		// Check if the filters allow this candidate
-		if shouldFilterByGenre && !query.genres.HasIntersection(record.Genres) {
+		if shouldFilterGenre && !query.genres.HasIntersection(record.Genres) {
+			continue
+		}
+		if shouldFilterTitleType && !record.TitleType.HasIntersection(query.titleTypes...) {
 			continue
 		}
 

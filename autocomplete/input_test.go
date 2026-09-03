@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	movies "github.com/noahtigner/go-autocomplete/internal/movies"
 )
 
 func TestParseQuery(t *testing.T) {
@@ -84,4 +86,34 @@ func TestParseQueryGenres(t *testing.T) {
 		})
 	}
 
+}
+
+func TestParseQueryTitleTypes(t *testing.T) {
+	tests := []struct {
+		name       string
+		titleTypes []string
+		want       []movies.TitleTypeEnum
+		wantError  bool
+	}{
+		{name: "case insensitive", titleTypes: []string{"TvSeries"}, want: []movies.TitleTypeEnum{7}},
+		{name: "multiple title types", titleTypes: []string{"movie", "TVEPISODE"}, want: []movies.TitleTypeEnum{1, 3}},
+		{name: "duplicates are preserved", titleTypes: []string{"movie", "movie"}, want: []movies.TitleTypeEnum{1, 1}},
+		{name: "empty title type", titleTypes: []string{""}, wantError: true},
+		{name: "unknown title type", titleTypes: []string{"unknown"}, wantError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseQuery(RawSearchParams{Term: "star", Limit: 10, TitleTypes: tt.titleTypes})
+			if (err != nil) != tt.wantError {
+				t.Fatalf("ParseQuery error = %v, want error: %t", err, tt.wantError)
+			}
+			if tt.wantError {
+				return
+			}
+			if !slices.Equal(got.titleTypes, tt.want) {
+				t.Errorf("title types = %v, want %v", got.titleTypes, tt.want)
+			}
+		})
+	}
 }

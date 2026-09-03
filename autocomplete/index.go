@@ -195,6 +195,14 @@ func BuildIndexFromRecordStream(fileName string) (Index, int, error) {
 			return Index{}, 0, err
 		}
 
+		if !movie.TitleType.IsValid() {
+			for _, jobChannel := range jobs {
+				close(jobChannel)
+			}
+			wg.Wait()
+			return Index{}, 0, fmt.Errorf("Invalid title type %d for record %d", movie.TitleType, movie.ID)
+		}
+
 		if processedCount == maxRecords {
 			for _, jobChannel := range jobs {
 				close(jobChannel)

@@ -3,17 +3,18 @@ package autocomplete
 import "testing"
 
 type searchBenchmarkCase struct {
-	name      string
-	query     string
-	genres    []string
-	limit     int
-	wantTotal int
+	name       string
+	query      string
+	genres     []string
+	titleTypes []string
+	limit      int
+	wantTotal  int
 }
 
 func buildBenchmarkIndex(b *testing.B, records int) Index {
 	b.Helper()
 
-	path, _ := writeBenchmarkJSONL(b, records)
+	path, _ := writeSearchBenchmarkJSONL(b, records)
 	index, count, err := BuildIndexFromRecordStream(path)
 	if err != nil {
 		b.Fatal(err)
@@ -34,12 +35,18 @@ func BenchmarkSearchIndex100K(b *testing.B) {
 		{name: "common-unigram-genre", query: "e", genres: []string{"drama"}, limit: 10, wantTotal: 40_000},
 		{name: "common-unigram-genre-zero-limit", query: "e", genres: []string{"drama"}, limit: 0, wantTotal: 40_000},
 		{name: "common-unigram-multi-genre", query: "e", genres: []string{"drama", "action"}, limit: 10, wantTotal: 80_000},
+		{name: "common-unigram-title-type", query: "e", titleTypes: []string{"movie"}, limit: 10, wantTotal: 20_000},
+		{name: "common-unigram-title-type-zero-limit", query: "e", titleTypes: []string{"movie"}, limit: 0, wantTotal: 20_000},
+		{name: "common-unigram-multi-title-type", query: "e", titleTypes: []string{"movie", "short"}, limit: 10, wantTotal: 40_000},
+		{name: "common-unigram-genre-and-title-type", query: "e", genres: []string{"drama"}, titleTypes: []string{"movie"}, limit: 10, wantTotal: 10_000},
+		{name: "common-unigram-no-title-type-match", query: "e", titleTypes: []string{"video"}, limit: 10, wantTotal: 0},
 		{name: "rare-unigram", query: "f", limit: 10, wantTotal: 20_000},
 		{name: "unigram-intersection", query: "e a", limit: 10, wantTotal: 60_000},
 		{name: "empty-unigram-intersection", query: "e q", limit: 10, wantTotal: 0},
 		{name: "common-bigram", query: "ar", limit: 10, wantTotal: 60_000},
 		{name: "common-trigram", query: "the", limit: 10, wantTotal: 20_000},
 		{name: "common-trigram-genre", query: "the", genres: []string{"drama"}, limit: 10, wantTotal: 10_000},
+		{name: "common-trigram-title-type", query: "the", titleTypes: []string{"movie"}, limit: 10, wantTotal: 5_000},
 		{name: "common-short-multiword-case-insensitive", query: "AR CH", limit: 10, wantTotal: 40_000},
 		{name: "mixed-short-long", query: "E EPISODE", limit: 10, wantTotal: 20_000},
 		{name: "mixed-short-long-limit-one", query: "E EPISODE", limit: 1, wantTotal: 20_000},
@@ -51,7 +58,7 @@ func BenchmarkSearchIndex100K(b *testing.B) {
 		{name: "long-query-zero-limit", query: "the", limit: 0, wantTotal: 20_000},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
-			query, err := ParseQuery(RawSearchParams{Term: tt.query, Limit: tt.limit, Genres: tt.genres})
+			query, err := ParseQuery(RawSearchParams{Term: tt.query, Limit: tt.limit, Genres: tt.genres, TitleTypes: tt.titleTypes})
 			if err != nil {
 				b.Fatal(err)
 			}

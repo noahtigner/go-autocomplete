@@ -19,7 +19,9 @@ var benchmarkTitleTemplates = []string{
 	"Night Shift",
 }
 
-func generateBenchmarkMovie(i int) movies.Movie {
+var benchmarkTitleTypes = []string{"movie", "short", "tvSeries", "tvMovie"}
+
+func generateBenchmarkMovie(i int, titleTypeName string) movies.Movie {
 	title := fmt.Sprintf(
 		"%s %06d",
 		benchmarkTitleTemplates[i%len(benchmarkTitleTemplates)],
@@ -34,10 +36,14 @@ func generateBenchmarkMovie(i int) movies.Movie {
 	if err != nil {
 		panic(err)
 	}
+	titleType, err := movies.NewTitleTypeEnum(titleTypeName)
+	if err != nil {
+		panic(err)
+	}
 
 	return movies.Movie{
 		ID:            i + 1,
-		TitleType:     "movie",
+		TitleType:     titleType,
 		PrimaryTitle:  title,
 		Genres:        genres,
 		AverageRating: &rating,
@@ -46,6 +52,14 @@ func generateBenchmarkMovie(i int) movies.Movie {
 }
 
 func writeBenchmarkJSONL(b *testing.B, records int) (string, int64) {
+	return writeBenchmarkJSONLWithTitleTypes(b, records, false)
+}
+
+func writeSearchBenchmarkJSONL(b *testing.B, records int) (string, int64) {
+	return writeBenchmarkJSONLWithTitleTypes(b, records, true)
+}
+
+func writeBenchmarkJSONLWithTitleTypes(b *testing.B, records int, mixedTitleTypes bool) (string, int64) {
 	b.Helper()
 
 	path := filepath.Join(b.TempDir(), "movies.jsonl")
@@ -58,7 +72,11 @@ func writeBenchmarkJSONL(b *testing.B, records int) (string, int64) {
 	encoder := json.NewEncoder(writer)
 
 	for i := range records {
-		if err := encoder.Encode(generateBenchmarkMovie(i)); err != nil {
+		titleTypeName := "movie"
+		if mixedTitleTypes {
+			titleTypeName = benchmarkTitleTypes[(i/len(benchmarkTitleTemplates))%len(benchmarkTitleTypes)]
+		}
+		if err := encoder.Encode(generateBenchmarkMovie(i, titleTypeName)); err != nil {
 			b.Fatal(err)
 		}
 	}

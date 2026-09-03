@@ -123,7 +123,7 @@ func TestBuildIndexFromRecordStream(t *testing.T) {
 
 	t.Run("missing genres decode as an empty mask", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "movies.jsonl")
-		if err := os.WriteFile(path, []byte(`{"id":1,"primaryTitle":"Alpha"}`+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(`{"id":1,"titleType":1,"primaryTitle":"Alpha"}`+"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -141,6 +141,30 @@ func TestBuildIndexFromRecordStream(t *testing.T) {
 		}
 		assertSearchResult(t, index.Search(query), 0, []int{})
 	})
+
+	for _, tt := range []struct {
+		name   string
+		record string
+	}{
+		{name: "missing title type", record: `{"id":1,"primaryTitle":"Alpha"}`},
+		{name: "null title type", record: `{"id":1,"titleType":null,"primaryTitle":"Alpha"}`},
+		{name: "out of range title type", record: `{"id":1,"titleType":12,"primaryTitle":"Alpha"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "movies.jsonl")
+			if err := os.WriteFile(path, []byte(tt.record+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			_, count, err := BuildIndexFromRecordStream(path)
+			if err == nil || !strings.Contains(err.Error(), "Invalid title type") {
+				t.Fatalf("error = %v, want invalid title type error", err)
+			}
+			if count != 0 {
+				t.Errorf("processed count = %d, want 0", count)
+			}
+		})
+	}
 
 	t.Run("duplicate ID", func(t *testing.T) {
 		path := writeMoviesJSONL(t, []movies.Movie{
@@ -210,7 +234,15 @@ func writeMoviesJSONL(t *testing.T, records []movies.Movie) string {
 	}
 
 	encoder := json.NewEncoder(file)
+	titleType, err := movies.NewTitleTypeEnum("movie")
+	if err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
 	for _, record := range records {
+		if !record.TitleType.IsValid() {
+			record.TitleType = titleType
+		}
 		if err := encoder.Encode(record); err != nil {
 			_ = file.Close()
 			t.Fatal(err)
