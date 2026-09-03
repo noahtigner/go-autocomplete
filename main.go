@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -22,6 +23,22 @@ func headers(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func writeJSON(w http.ResponseWriter, status int, content any) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	return json.NewEncoder(w).Encode(content)
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	errJson := struct {
+		Detail string `json:"detail"`
+	}{Detail: message}
+	err := writeJSON(w, status, &errJson)
+	if err != nil {
+		fmt.Println("Server:", err)
+	}
+}
+
 func search(w http.ResponseWriter, req *http.Request, idx *autocomplete.Index) {
 	ctx := req.Context()
 
@@ -31,7 +48,8 @@ func search(w http.ResponseWriter, req *http.Request, idx *autocomplete.Index) {
 	if queryParams.Has("limit") {
 		parsed, err := strconv.Atoi(queryParams.Get("limit"))
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			fmt.Println("Server:", err)
+			writeError(w, http.StatusBadRequest, "Error parsing limit")
 			return
 		}
 		limit = parsed
@@ -42,7 +60,8 @@ func search(w http.ResponseWriter, req *http.Request, idx *autocomplete.Index) {
 
 	query, err := autocomplete.ParseQuery(autocomplete.RawSearchParams{Term: q, Limit: limit, Genres: genres, TitleTypes: titleTypes})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		fmt.Println("Server:", err)
+		writeError(w, http.StatusBadRequest, "Error parsing query")
 		return
 	}
 
@@ -50,19 +69,18 @@ func search(w http.ResponseWriter, req *http.Request, idx *autocomplete.Index) {
 	case <-ctx.Done():
 		err := ctx.Err()
 		fmt.Println("Server:", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusGatewayTimeout, "Connection closed")
 	default:
 		searchStart := time.Now()
 		results := idx.Search(query)
 		searchDuration := time.Since(searchStart)
-		for _, match := range results.Movies {
-			yearStr := "unknown"
-			if match.Year != nil {
-				yearStr = strconv.Itoa(*match.Year)
-			}
-			fmt.Fprintf(w, "\t%s (%s)\t[%d votes -> %f]\n", match.PrimaryTitle, yearStr, match.NumVotes, match.BayesianRating())
+		fmt.Printf("Found %d results in %.2fs\n", results.Total, searchDuration.Seconds())
+		err := writeJSON(w, http.StatusOK, results)
+		if err != nil {
+			fmt.Println("Server:", err)
+			writeError(w, http.StatusInternalServerError, "Error writing response")
 		}
-		fmt.Fprintf(w, "Found %d results in %.2fs\n", results.Total, searchDuration.Seconds())
+
 	}
 }
 
