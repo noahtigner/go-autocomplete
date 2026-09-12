@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	autocomplete "github.com/noahtigner/go-autocomplete/autocomplete"
@@ -84,7 +85,38 @@ func search(w http.ResponseWriter, req *http.Request, idx *autocomplete.Index) {
 	}
 }
 
+func cors(allowedOrigin string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Add("Vary", "Origin")
+
+		if req.Header.Get("Origin") == allowedOrigin {
+			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		}
+
+		if req.Method == http.MethodOptions {
+			if req.Header.Get("Origin") != allowedOrigin {
+				http.Error(w, "CORS origin denied", http.StatusForbidden)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, req)
+	})
+}
+
 func main() {
+	allowedOrigin, present := os.LookupEnv("CORS_ALLOWED_ORIGIN")
+	allowedOrigin = strings.TrimSpace(allowedOrigin)
+
+	if !present || allowedOrigin == "" {
+		fmt.Fprintln(os.Stderr, "CORS_ALLOWED_ORIGIN must be set")
+		os.Exit(1)
+	}
+
 	ioStart := time.Now()
 
 	index, processedCount, err := autocomplete.BuildIndexFromRecordStream("./data/movies.jsonl")
@@ -96,11 +128,17 @@ func main() {
 	ioDuration := time.Since(ioStart)
 	fmt.Printf("Processed %d records in %.2fs\n", processedCount, ioDuration.Seconds())
 
-	http.HandleFunc("GET /search", func(w http.ResponseWriter, req *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /search", func(w http.ResponseWriter, req *http.Request) {
 		search(w, req, &index)
 	})
 
-	http.HandleFunc("/hello", hello)
-	http.HandleFunc("/headers", headers)
-	http.ListenAndServe(":8090", nil)
+	mux.HandleFunc("/hello", hello)
+	mux.HandleFunc("/headers", headers)
+
+	if err := http.ListenAndServe(":8090", cors(allowedOrigin, mux)); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }

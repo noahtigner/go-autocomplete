@@ -83,3 +83,84 @@ func TestSearchRouteRejectsNonGETRequests(t *testing.T) {
 		t.Errorf("status = %d, want %d", got, http.StatusMethodNotAllowed)
 	}
 }
+
+func TestCORS(t *testing.T) {
+	const allowedOrigin = "https://noahtigner.com"
+
+	handler := cors(allowedOrigin, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	tests := []struct {
+		name                    string
+		method                  string
+		origin                  string
+		requestedMethod         string
+		wantStatus              int
+		wantAllowedOrigin       string
+		wantAllowedMethods      string
+		wantAllowedRequestHeads string
+	}{
+		{
+			name:                    "allows configured origin",
+			method:                  http.MethodGet,
+			origin:                  allowedOrigin,
+			wantStatus:              http.StatusOK,
+			wantAllowedOrigin:       allowedOrigin,
+			wantAllowedMethods:      "GET, OPTIONS",
+			wantAllowedRequestHeads: "Content-Type",
+		},
+		{
+			name:       "does not allow another origin",
+			method:     http.MethodGet,
+			origin:     "https://example.com",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:                    "allows configured preflight",
+			method:                  http.MethodOptions,
+			origin:                  allowedOrigin,
+			requestedMethod:         http.MethodGet,
+			wantStatus:              http.StatusNoContent,
+			wantAllowedOrigin:       allowedOrigin,
+			wantAllowedMethods:      "GET, OPTIONS",
+			wantAllowedRequestHeads: "Content-Type",
+		},
+		{
+			name:            "rejects another origin preflight",
+			method:          http.MethodOptions,
+			origin:          "https://example.com",
+			requestedMethod: http.MethodGet,
+			wantStatus:      http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(tt.method, "/search", nil)
+			request.Header.Set("Origin", tt.origin)
+			if tt.requestedMethod != "" {
+				request.Header.Set("Access-Control-Request-Method", tt.requestedMethod)
+			}
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			if got := response.Code; got != tt.wantStatus {
+				t.Errorf("status = %d, want %d", got, tt.wantStatus)
+			}
+			if got := response.Header().Get("Access-Control-Allow-Origin"); got != tt.wantAllowedOrigin {
+				t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, tt.wantAllowedOrigin)
+			}
+			if got := response.Header().Get("Access-Control-Allow-Methods"); got != tt.wantAllowedMethods {
+				t.Errorf("Access-Control-Allow-Methods = %q, want %q", got, tt.wantAllowedMethods)
+			}
+			if got := response.Header().Get("Access-Control-Allow-Headers"); got != tt.wantAllowedRequestHeads {
+				t.Errorf("Access-Control-Allow-Headers = %q, want %q", got, tt.wantAllowedRequestHeads)
+			}
+			if got := response.Header().Get("Vary"); got != "Origin" {
+				t.Errorf("Vary = %q, want %q", got, "Origin")
+			}
+		})
+	}
+}
