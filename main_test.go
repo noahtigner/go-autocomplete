@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	autocomplete "github.com/noahtigner/go-autocomplete/autocomplete"
@@ -19,22 +19,22 @@ func TestSearchHandler(t *testing.T) {
 		name          string
 		url           string
 		wantStatus    int
+		wantTotal     int
 		wantResultLen int
-		wantFound     bool
 	}{
-		{name: "default limit", url: "/search?q=star", wantStatus: http.StatusOK, wantResultLen: 10, wantFound: true},
-		{name: "explicit limit", url: "/search?q=star&limit=1", wantStatus: http.StatusOK, wantResultLen: 1, wantFound: true},
-		{name: "zero limit", url: "/search?q=star&limit=0", wantStatus: http.StatusOK, wantResultLen: 0, wantFound: true},
-		{name: "genre filter", url: "/search?q=zed&genre=drama", wantStatus: http.StatusOK, wantResultLen: 1, wantFound: true},
-		{name: "case insensitive genre filter", url: "/search?q=zed&genre=DrAmA", wantStatus: http.StatusOK, wantResultLen: 1, wantFound: true},
-		{name: "multiple genre filters match either", url: "/search?q=zed&genre=action&genre=drama", wantStatus: http.StatusOK, wantResultLen: 1, wantFound: true},
-		{name: "nonmatching genre filter", url: "/search?q=zed&genre=action", wantStatus: http.StatusOK, wantResultLen: 0, wantFound: true},
+		{name: "default limit", url: "/search?q=star", wantStatus: http.StatusOK, wantTotal: 12, wantResultLen: 10},
+		{name: "explicit limit", url: "/search?q=star&limit=1", wantStatus: http.StatusOK, wantTotal: 12, wantResultLen: 1},
+		{name: "zero limit", url: "/search?q=star&limit=0", wantStatus: http.StatusOK, wantTotal: 12, wantResultLen: 0},
+		{name: "genre filter", url: "/search?q=zed&genre=drama", wantStatus: http.StatusOK, wantTotal: 1, wantResultLen: 1},
+		{name: "case insensitive genre filter", url: "/search?q=zed&genre=DrAmA", wantStatus: http.StatusOK, wantTotal: 1, wantResultLen: 1},
+		{name: "multiple genre filters match either", url: "/search?q=zed&genre=action&genre=drama", wantStatus: http.StatusOK, wantTotal: 1, wantResultLen: 1},
+		{name: "nonmatching genre filter", url: "/search?q=zed&genre=action", wantStatus: http.StatusOK, wantTotal: 0, wantResultLen: 0},
 		{name: "invalid genre", url: "/search?q=zed&genre=unknown", wantStatus: http.StatusBadRequest},
-		{name: "title type filter", url: "/search?q=zed&type=movie", wantStatus: http.StatusOK, wantResultLen: 1, wantFound: true},
-		{name: "case insensitive title type filter", url: "/search?q=zed&type=Movie", wantStatus: http.StatusOK, wantResultLen: 1, wantFound: true},
-		{name: "multiple title type filters match either", url: "/search?q=zed&type=short&type=movie", wantStatus: http.StatusOK, wantResultLen: 1, wantFound: true},
-		{name: "nonmatching title type filter", url: "/search?q=zed&type=short", wantStatus: http.StatusOK, wantResultLen: 0, wantFound: true},
-		{name: "genre and title type filters both match", url: "/search?q=zed&genre=drama&type=movie", wantStatus: http.StatusOK, wantResultLen: 1, wantFound: true},
+		{name: "title type filter", url: "/search?q=zed&type=movie", wantStatus: http.StatusOK, wantTotal: 1, wantResultLen: 1},
+		{name: "case insensitive title type filter", url: "/search?q=zed&type=Movie", wantStatus: http.StatusOK, wantTotal: 1, wantResultLen: 1},
+		{name: "multiple title type filters match either", url: "/search?q=zed&type=short&type=movie", wantStatus: http.StatusOK, wantTotal: 1, wantResultLen: 1},
+		{name: "nonmatching title type filter", url: "/search?q=zed&type=short", wantStatus: http.StatusOK, wantTotal: 0, wantResultLen: 0},
+		{name: "genre and title type filters both match", url: "/search?q=zed&genre=drama&type=movie", wantStatus: http.StatusOK, wantTotal: 1, wantResultLen: 1},
 		{name: "invalid title type", url: "/search?q=zed&type=unknown", wantStatus: http.StatusBadRequest},
 		{name: "missing query", url: "/search", wantStatus: http.StatusBadRequest},
 		{name: "blank query", url: "/search?q=+", wantStatus: http.StatusBadRequest},
@@ -52,24 +52,22 @@ func TestSearchHandler(t *testing.T) {
 			if got := response.Code; got != tt.wantStatus {
 				t.Errorf("status = %d, want %d", got, tt.wantStatus)
 			}
-			if got := resultLineCount(response.Body.String()); got != tt.wantResultLen {
-				t.Errorf("result count = %d, want %d; response = %q", got, tt.wantResultLen, response.Body.String())
+			if tt.wantStatus != http.StatusOK {
+				return
 			}
-			if got := strings.Contains(response.Body.String(), "Found "); got != tt.wantFound {
-				t.Errorf("contains search summary = %t, want %t; response = %q", got, tt.wantFound, response.Body.String())
+
+			var result autocomplete.SearchResult
+			if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+				t.Fatalf("decode search response: %v", err)
+			}
+			if result.Total != tt.wantTotal {
+				t.Errorf("total = %d, want %d", result.Total, tt.wantTotal)
+			}
+			if got := len(result.Movies); got != tt.wantResultLen {
+				t.Errorf("result count = %d, want %d", got, tt.wantResultLen)
 			}
 		})
 	}
-}
-
-func resultLineCount(response string) int {
-	count := 0
-	for line := range strings.SplitSeq(response, "\n") {
-		if strings.HasPrefix(line, "\t") {
-			count++
-		}
-	}
-	return count
 }
 
 func TestSearchRouteRejectsNonGETRequests(t *testing.T) {
